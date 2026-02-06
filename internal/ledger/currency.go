@@ -17,20 +17,31 @@ var Currencies = map[string]CurrencyDef{
 	"USD": {Code: "USD", Name: "US Dollar", Exponent: 2},
 	"EUR": {Code: "EUR", Name: "Euro", Exponent: 2},
 	"GBP": {Code: "GBP", Name: "Pound Sterling", Exponent: 2},
-	"JPY": {Code: "JPY", Name: "Japanese Yen", Exponent: 0},
-	"CHF": {Code: "CHF", Name: "Swiss Franc", Exponent: 2},
-	"AUD": {Code: "AUD", Name: "Australian Dollar", Exponent: 2},
-	"CAD": {Code: "CAD", Name: "Canadian Dollar", Exponent: 2},
-	"CNY": {Code: "CNY", Name: "Chinese Yuan", Exponent: 2},
-	"INR": {Code: "INR", Name: "Indian Rupee", Exponent: 2},
-	"SGD": {Code: "SGD", Name: "Singapore Dollar", Exponent: 2},
-	"HKD": {Code: "HKD", Name: "Hong Kong Dollar", Exponent: 2},
-	"NZD": {Code: "NZD", Name: "New Zealand Dollar", Exponent: 2},
-	"SEK": {Code: "SEK", Name: "Swedish Krona", Exponent: 2},
-	"NOK": {Code: "NOK", Name: "Norwegian Krone", Exponent: 2},
-	"KRW": {Code: "KRW", Name: "South Korean Won", Exponent: 0},
-	"BRL": {Code: "BRL", Name: "Brazilian Real", Exponent: 2},
-	"ZAR": {Code: "ZAR", Name: "South African Rand", Exponent: 2},
+	"GEL": {Code: "GEL", Name: "Georgian Lari", Exponent: 2},
+}
+
+// ReportingCurrency is the currency used for consolidated reporting.
+const ReportingCurrency = "GEL"
+
+// FXRatesToGEL maps currency codes to their mid-rate in GEL.
+// These are indicative rates; in production you'd fetch live rates.
+var FXRatesToGEL = map[string]float64{
+	"GEL": 1.0,
+	"USD": 2.70,
+	"EUR": 2.95,
+	"GBP": 3.40,
+}
+
+// ToGEL converts an amount in minor units of the given currency to GEL minor units.
+func ToGEL(amount int64, currency string) int64 {
+	if currency == "GEL" {
+		return amount
+	}
+	rate, ok := FXRatesToGEL[currency]
+	if !ok {
+		return 0
+	}
+	return int64(math.Round(float64(amount) * rate))
 }
 
 func ValidCurrency(code string) bool {
@@ -70,7 +81,6 @@ func ToMinorUnits(amount string, currency string) (int64, error) {
 	result := whole * multiplier
 
 	if cur.Exponent > 0 && fracPart != "" {
-		// Pad or truncate fractional part to match exponent
 		for len(fracPart) < cur.Exponent {
 			fracPart += "0"
 		}
@@ -123,7 +133,6 @@ func CurrencyCodes() []string {
 	for code := range Currencies {
 		codes = append(codes, code)
 	}
-	// Simple sort
 	for i := 0; i < len(codes); i++ {
 		for j := i + 1; j < len(codes); j++ {
 			if codes[i] > codes[j] {

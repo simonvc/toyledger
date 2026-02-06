@@ -10,6 +10,7 @@ type keyMap struct {
 	Escape     key.Binding
 	New        key.Binding
 	Delete     key.Binding
+	Rename     key.Binding
 	Up         key.Binding
 	Down       key.Binding
 	Help       key.Binding
@@ -44,6 +45,10 @@ var keys = keyMap{
 	Delete: key.NewBinding(
 		key.WithKeys("d"),
 		key.WithHelp("d", "delete account"),
+	),
+	Rename: key.NewBinding(
+		key.WithKeys("r"),
+		key.WithHelp("r", "rename account"),
 	),
 	Up: key.NewBinding(
 		key.WithKeys("up", "k"),

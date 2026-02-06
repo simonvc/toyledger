@@ -19,6 +19,8 @@ const (
 	learnAccounts
 	learnAmount
 	learnCurrency
+	learnAmount2   // destination amount (multi-currency)
+	learnCurrency2 // destination currency (multi-currency)
 	learnConfirm
 )
 
@@ -30,6 +32,11 @@ type learnTxnCreatedMsg struct {
 type learnAccountsLoadedMsg struct {
 	accounts []ledger.Account
 	err      error
+}
+
+type learnRatiosLoadedMsg struct {
+	ratios *ledger.RegulatoryRatios
+	err    error
 }
 
 type learnModel struct {
@@ -44,22 +51,36 @@ type learnModel struct {
 	width       int
 	height      int
 
+	// Destination amount/currency for multi-currency templates
+	amountInput2 textinput.Model
+	currencyIdx2 int
+
 	// Account editing state
-	acctInputs []textinput.Model // one text input per template entry
-	acctIdx    int               // which entry we're editing
-	accounts   []ledger.Account  // loaded accounts for reference
+	acctInputs []textinput.Model
+	acctIdx    int
+	accounts   []ledger.Account
+
+	// Ratios for impact preview
+	ratios *ledger.RegulatoryRatios
 }
 
 func (m *learnModel) init() {
 	m.templates = ledger.Templates
 	m.curOptions = ledger.CurrencyCodes()
-	// Default to USD
 	for i, c := range m.curOptions {
 		if c == "USD" {
 			m.currencyIdx = i
+			m.currencyIdx2 = i
 			break
 		}
 	}
+}
+
+func (m *learnModel) isMultiCurrency() bool {
+	if tmpl := m.selected(); tmpl != nil {
+		return tmpl.IsMultiCurrency()
+	}
+	return false
 }
 
 func (m learnModel) update(msg tea.Msg, c *client.Client) (learnModel, tea.Cmd) {
@@ -83,19 +104,43 @@ func (m learnModel) update(msg tea.Msg, c *client.Client) (learnModel, tea.Cmd) 
 		m.accounts = msg.accounts
 		return m, nil
 
+	case learnRatiosLoadedMsg:
+		if msg.err == nil {
+			m.ratios = msg.ratios
+		}
+		return m, nil
+
 	case tea.KeyMsg:
+		prevState := m.state
+		var cmd tea.Cmd
 		switch m.state {
 		case learnBrowse:
-			return m.updateBrowse(msg, c)
+			m, cmd = m.updateBrowse(msg, c)
 		case learnAccounts:
-			return m.updateAccounts(msg)
+			m, cmd = m.updateAccounts(msg)
 		case learnAmount:
-			return m.updateAmount(msg)
+			m, cmd = m.updateAmount(msg)
 		case learnCurrency:
-			return m.updateCurrency(msg)
+			m, cmd = m.updateCurrency(msg)
+		case learnAmount2:
+			m, cmd = m.updateAmount2(msg)
+		case learnCurrency2:
+			m, cmd = m.updateCurrency2(msg)
 		case learnConfirm:
-			return m.updateConfirm(msg, c)
+			m, cmd = m.updateConfirm(msg, c)
 		}
+
+		if prevState != learnConfirm && m.state == learnConfirm {
+			loadRatios := func() tea.Msg {
+				ratios, err := c.RegulatoryRatios(context.Background())
+				return learnRatiosLoadedMsg{ratios: ratios, err: err}
+			}
+			if cmd != nil {
+				return m, tea.Batch(cmd, loadRatios)
+			}
+			return m, loadRatios
+		}
+		return m, cmd
 	}
 	return m, nil
 }
@@ -112,7 +157,6 @@ func (m learnModel) updateBrowse(msg tea.KeyMsg, c *client.Client) (learnModel, 
 		}
 	case key.Matches(msg, keys.Enter):
 		tmpl := m.templates[m.cursor]
-		// Set up account text inputs pre-filled with defaults
 		m.acctInputs = make([]textinput.Model, len(tmpl.Entries))
 		for i, e := range tmpl.Entries {
 			ti := textinput.New()
@@ -126,7 +170,6 @@ func (m learnModel) updateBrowse(msg tea.KeyMsg, c *client.Client) (learnModel, 
 		m.state = learnAccounts
 		m.err = nil
 		m.statusMsg = ""
-		// Load accounts list for reference
 		return m, func() tea.Msg {
 			accounts, err := c.ListAccounts(context.Background(), "", nil)
 			return learnAccountsLoadedMsg{accounts: accounts, err: err}
@@ -142,7 +185,6 @@ func (m learnModel) updateAccounts(msg tea.KeyMsg) (learnModel, tea.Cmd) {
 		return m, nil
 	}
 	if key.Matches(msg, keys.Enter) {
-		// Validate current input is not empty
 		val := strings.TrimSpace(m.acctInputs[m.acctIdx].Value())
 		if val == "" {
 			m.err = fmt.Errorf("account ID is required")
@@ -151,22 +193,23 @@ func (m learnModel) updateAccounts(msg tea.KeyMsg) (learnModel, tea.Cmd) {
 		m.err = nil
 		m.acctInputs[m.acctIdx].Blur()
 
-		// Move to next entry or proceed to amount
 		if m.acctIdx < len(m.acctInputs)-1 {
 			m.acctIdx++
 			m.acctInputs[m.acctIdx].Focus()
 			return m, nil
 		}
-		// All accounts set, move to amount
 		m.state = learnAmount
 		m.amountInput = textinput.New()
-		m.amountInput.Placeholder = "e.g. 1000.00"
+		if m.isMultiCurrency() {
+			m.amountInput.Placeholder = "source amount, e.g. 1000.00"
+		} else {
+			m.amountInput.Placeholder = "e.g. 1000.00"
+		}
 		m.amountInput.CharLimit = 20
 		m.amountInput.Focus()
 		return m, nil
 	}
 
-	// Tab moves between account inputs
 	if msg.String() == "tab" {
 		m.acctInputs[m.acctIdx].Blur()
 		m.acctIdx = (m.acctIdx + 1) % len(m.acctInputs)
@@ -187,7 +230,6 @@ func (m learnModel) updateAccounts(msg tea.KeyMsg) (learnModel, tea.Cmd) {
 
 func (m learnModel) updateAmount(msg tea.KeyMsg) (learnModel, tea.Cmd) {
 	if key.Matches(msg, keys.Escape) {
-		// Go back to accounts
 		m.state = learnAccounts
 		m.acctInputs[m.acctIdx].Focus()
 		m.err = nil
@@ -231,9 +273,104 @@ func (m learnModel) updateCurrency(msg tea.KeyMsg) (learnModel, tea.Cmd) {
 		}
 	case key.Matches(msg, keys.Enter):
 		m.err = nil
+		if m.isMultiCurrency() {
+			// Move to destination amount/currency
+			m.state = learnAmount2
+			m.amountInput2 = textinput.New()
+			m.amountInput2.Placeholder = "destination amount, e.g. 1100.00"
+			m.amountInput2.CharLimit = 20
+			m.amountInput2.Focus()
+		} else {
+			m.state = learnConfirm
+		}
+	}
+	return m, nil
+}
+
+func (m learnModel) updateAmount2(msg tea.KeyMsg) (learnModel, tea.Cmd) {
+	if key.Matches(msg, keys.Escape) {
+		m.state = learnCurrency
+		m.err = nil
+		return m, nil
+	}
+	if key.Matches(msg, keys.Enter) {
+		amt := m.amountInput2.Value()
+		if amt == "" {
+			m.err = fmt.Errorf("destination amount is required")
+			return m, nil
+		}
+		cur := m.curOptions[m.currencyIdx2]
+		_, err := ledger.ToMinorUnits(amt, cur)
+		if err != nil {
+			m.err = fmt.Errorf("invalid amount: %v", err)
+			return m, nil
+		}
+		m.err = nil
+		m.state = learnCurrency2
+		return m, nil
+	}
+	var cmd tea.Cmd
+	m.amountInput2, cmd = m.amountInput2.Update(msg)
+	return m, cmd
+}
+
+func (m learnModel) updateCurrency2(msg tea.KeyMsg) (learnModel, tea.Cmd) {
+	if key.Matches(msg, keys.Escape) {
+		m.state = learnAmount2
+		m.amountInput2.Focus()
+		return m, nil
+	}
+	switch {
+	case key.Matches(msg, keys.Up):
+		if m.currencyIdx2 > 0 {
+			m.currencyIdx2--
+		}
+	case key.Matches(msg, keys.Down):
+		if m.currencyIdx2 < len(m.curOptions)-1 {
+			m.currencyIdx2++
+		}
+	case key.Matches(msg, keys.Enter):
+		m.err = nil
 		m.state = learnConfirm
 	}
 	return m, nil
+}
+
+// buildEntries constructs the transaction entries from the template + user inputs.
+func (m *learnModel) buildEntries() []ledger.Entry {
+	tmpl := m.selected()
+	if tmpl == nil {
+		return nil
+	}
+
+	cur0 := m.curOptions[m.currencyIdx]
+	minor0, _ := ledger.ToMinorUnits(m.amountInput.Value(), cur0)
+
+	cur1 := cur0
+	minor1 := minor0
+	if tmpl.IsMultiCurrency() {
+		cur1 = m.curOptions[m.currencyIdx2]
+		minor1, _ = ledger.ToMinorUnits(m.amountInput2.Value(), cur1)
+	}
+
+	var entries []ledger.Entry
+	for i, e := range tmpl.Entries {
+		amt := minor0
+		cur := cur0
+		if e.Group == 1 {
+			amt = minor1
+			cur = cur1
+		}
+		if !e.IsDebit {
+			amt = -amt
+		}
+		entries = append(entries, ledger.Entry{
+			AccountID: strings.TrimSpace(m.acctInputs[i].Value()),
+			Amount:    amt,
+			Currency:  cur,
+		})
+	}
+	return entries
 }
 
 func (m learnModel) updateConfirm(msg tea.KeyMsg, c *client.Client) (learnModel, tea.Cmd) {
@@ -245,23 +382,10 @@ func (m learnModel) updateConfirm(msg tea.KeyMsg, c *client.Client) (learnModel,
 	switch msg.String() {
 	case "y", "Y", "enter":
 		tmpl := m.templates[m.cursor]
-		cur := m.curOptions[m.currencyIdx]
-		minor, _ := ledger.ToMinorUnits(m.amountInput.Value(), cur)
-
+		entries := m.buildEntries()
 		txn := &ledger.Transaction{
 			Description: tmpl.Name,
-		}
-		for i, e := range tmpl.Entries {
-			amt := minor
-			if !e.IsDebit {
-				amt = -amt
-			}
-			accountID := strings.TrimSpace(m.acctInputs[i].Value())
-			txn.Entries = append(txn.Entries, ledger.Entry{
-				AccountID: accountID,
-				Amount:    amt,
-				Currency:  cur,
-			})
+			Entries:     entries,
 		}
 		return m, func() tea.Msg {
 			created, err := c.CreateTransaction(context.Background(), txn)
@@ -327,7 +451,7 @@ func (m *learnModel) view() string {
 
 		b.WriteString(dimStyle.Render("\n  Enter to execute template"))
 
-	case learnAccounts, learnAmount, learnCurrency, learnConfirm:
+	case learnAccounts, learnAmount, learnCurrency, learnAmount2, learnCurrency2, learnConfirm:
 		tmpl := m.selected()
 		if tmpl == nil {
 			return ""
@@ -336,10 +460,9 @@ func (m *learnModel) view() string {
 		b.WriteString(titleStyle.Render(tmpl.Name))
 		b.WriteString("\n\n")
 
-		// Explanation
 		b.WriteString("  " + dimStyle.Render(tmpl.Description) + "\n\n")
 
-		// Show the journal entry pattern with CoA codes
+		// Show the journal entry pattern
 		b.WriteString("  " + headerStyle.Render(fmt.Sprintf("%-4s  %-6s  %-14s  %s", "TYPE", "CoA", "ACCOUNT", "ROLE")) + "\n")
 		for i, e := range tmpl.Entries {
 			tag := "DR"
@@ -352,7 +475,15 @@ func (m *learnModel) view() string {
 			if m.acctInputs != nil && i < len(m.acctInputs) {
 				acctID = m.acctInputs[i].Value()
 			}
-			b.WriteString(style.Render(fmt.Sprintf("  %-4s  %-6d  %-14s  %s", tag, e.CoACode, acctID, e.Role)) + "\n")
+			groupLabel := ""
+			if tmpl.IsMultiCurrency() {
+				if e.Group == 0 {
+					groupLabel = " [source]"
+				} else {
+					groupLabel = " [dest]"
+				}
+			}
+			b.WriteString(style.Render(fmt.Sprintf("  %-4s  %-6d  %-14s  %s%s", tag, e.CoACode, acctID, e.Role, groupLabel)) + "\n")
 		}
 		b.WriteString("\n")
 
@@ -372,7 +503,6 @@ func (m *learnModel) view() string {
 				b.WriteString("     " + m.acctInputs[i].View() + "\n")
 			}
 
-			// Show available accounts for reference
 			if len(m.accounts) > 0 {
 				b.WriteString("\n  " + dimStyle.Render("Available accounts:") + "\n")
 				for _, a := range m.accounts {
@@ -381,52 +511,67 @@ func (m *learnModel) view() string {
 			}
 
 		case learnAmount:
-			b.WriteString("  Enter amount:\n\n")
+			if tmpl.IsMultiCurrency() {
+				b.WriteString("  Enter SOURCE amount:\n\n")
+			} else {
+				b.WriteString("  Enter amount:\n\n")
+			}
 			b.WriteString("  " + m.amountInput.View() + "\n")
 
 		case learnCurrency:
-			b.WriteString(fmt.Sprintf("  Amount: %s\n", m.amountInput.Value()))
-			b.WriteString("  Select currency:\n\n")
+			if tmpl.IsMultiCurrency() {
+				b.WriteString(fmt.Sprintf("  Source amount: %s\n", m.amountInput.Value()))
+				b.WriteString("  Select SOURCE currency:\n\n")
+			} else {
+				b.WriteString(fmt.Sprintf("  Amount: %s\n", m.amountInput.Value()))
+				b.WriteString("  Select currency:\n\n")
+			}
+			m.viewCurrencyPicker(&b, m.currencyIdx)
 
-			start := m.currencyIdx - 3
-			if start < 0 {
-				start = 0
-			}
-			end := start + 7
-			if end > len(m.curOptions) {
-				end = len(m.curOptions)
-			}
-			for i := start; i < end; i++ {
-				code := m.curOptions[i]
-				cur := ledger.Currencies[code]
-				label := fmt.Sprintf("%s - %s", code, cur.Name)
-				if i == m.currencyIdx {
-					b.WriteString(selectedStyle.Render("  > "+label) + "\n")
-				} else {
-					b.WriteString(fmt.Sprintf("    %s\n", label))
-				}
-			}
+		case learnAmount2:
+			srcCur := m.curOptions[m.currencyIdx]
+			b.WriteString(fmt.Sprintf("  Source: %s %s\n", m.amountInput.Value(), srcCur))
+			b.WriteString("  Enter DESTINATION amount:\n\n")
+			b.WriteString("  " + m.amountInput2.View() + "\n")
+
+		case learnCurrency2:
+			srcCur := m.curOptions[m.currencyIdx]
+			b.WriteString(fmt.Sprintf("  Source: %s %s\n", m.amountInput.Value(), srcCur))
+			b.WriteString(fmt.Sprintf("  Destination amount: %s\n", m.amountInput2.Value()))
+			b.WriteString("  Select DESTINATION currency:\n\n")
+			m.viewCurrencyPicker(&b, m.currencyIdx2)
 
 		case learnConfirm:
-			cur := m.curOptions[m.currencyIdx]
-			minor, _ := ledger.ToMinorUnits(m.amountInput.Value(), cur)
-			formatted := ledger.FormatAmount(minor, cur)
-
+			entries := m.buildEntries()
 			b.WriteString("  Review:\n\n")
 
 			var summary strings.Builder
-			summary.WriteString(fmt.Sprintf("%s %s\n", labelStyle.Render("Description:"), tmpl.Name))
-			summary.WriteString(fmt.Sprintf("%s %s %s\n\n", labelStyle.Render("Amount:"), formatted, cur))
-			for i, e := range tmpl.Entries {
+			summary.WriteString(fmt.Sprintf("%s %s\n\n", labelStyle.Render("Description:"), tmpl.Name))
+			for _, e := range entries {
 				tag := "DR"
-				if !e.IsDebit {
+				amt := e.Amount
+				if amt < 0 {
 					tag = "CR"
+					amt = -amt
 				}
-				acctID := strings.TrimSpace(m.acctInputs[i].Value())
-				summary.WriteString(fmt.Sprintf("  %s  %-14s  %s %s\n", tag, acctID, formatted, cur))
+				formatted := ledger.FormatAmount(amt, e.Currency)
+				summary.WriteString(fmt.Sprintf("  %s  %-14s  %s %s\n", tag, e.AccountID, formatted, e.Currency))
 			}
 			b.WriteString(boxStyle.Render(summary.String()))
-			b.WriteString("\n\n  Post this transaction? (y/n)\n")
+			b.WriteString("\n\n")
+
+			// Ratio impact
+			if m.ratios != nil {
+				acctMap := make(map[string]ledger.Account, len(m.accounts))
+				for _, a := range m.accounts {
+					acctMap[a.ID] = a
+				}
+				projected := ledger.ProjectRatios(m.ratios, entries, acctMap)
+				b.WriteString(RenderRatioImpact(m.ratios, projected))
+				b.WriteString("\n")
+			}
+
+			b.WriteString("  Post this transaction? (y/n)\n")
 		}
 
 		b.WriteString("\n" + dimStyle.Render("  ESC to go back"))
@@ -437,4 +582,25 @@ func (m *learnModel) view() string {
 	}
 
 	return b.String()
+}
+
+func (m *learnModel) viewCurrencyPicker(b *strings.Builder, idx int) {
+	start := idx - 3
+	if start < 0 {
+		start = 0
+	}
+	end := start + 7
+	if end > len(m.curOptions) {
+		end = len(m.curOptions)
+	}
+	for i := start; i < end; i++ {
+		code := m.curOptions[i]
+		cur := ledger.Currencies[code]
+		label := fmt.Sprintf("%s - %s", code, cur.Name)
+		if i == idx {
+			b.WriteString(selectedStyle.Render("  > "+label) + "\n")
+		} else {
+			b.WriteString(fmt.Sprintf("    %s\n", label))
+		}
+	}
 }

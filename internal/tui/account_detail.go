@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -75,7 +76,11 @@ func (m *accountDetailModel) view() string {
 	b.WriteString(fmt.Sprintf("%s %s\n", labelStyle.Render("Category:"), ledger.CategoryLabel(m.account.Category)))
 	b.WriteString(fmt.Sprintf("%s %s\n", labelStyle.Render("Currency:"), m.account.Currency))
 	if m.balance != nil {
-		b.WriteString(fmt.Sprintf("%s %s %s\n", labelStyle.Render("Balance:"), m.balance.Formatted, m.balance.Currency))
+		if m.account.Currency == "*" {
+			b.WriteString(fmt.Sprintf("%s %s\n", labelStyle.Render("Balance:"), "See FX Position below"))
+		} else {
+			b.WriteString(fmt.Sprintf("%s %s %s\n", labelStyle.Render("Balance:"), m.balance.Formatted, m.balance.Currency))
+		}
 	}
 	b.WriteString(fmt.Sprintf("%s %v\n", labelStyle.Render("System:"), m.account.IsSystem))
 	b.WriteString("\n")
@@ -107,6 +112,48 @@ func (m *accountDetailModel) view() string {
 			}
 			b.WriteString("\n")
 		}
+	}
+
+	// FX Position & PnL for wildcard-currency accounts (e.g. ~fx)
+	if m.account.Currency == "*" && len(m.entries) > 0 {
+		byCurrency := make(map[string]int64)
+		for _, e := range m.entries {
+			byCurrency[e.Currency] += e.Amount
+		}
+
+		currencies := make([]string, 0, len(byCurrency))
+		for ccy := range byCurrency {
+			currencies = append(currencies, ccy)
+		}
+		sort.Strings(currencies)
+
+		b.WriteString("\n")
+		b.WriteString(headerStyle.Render("  FX Position & PnL"))
+		b.WriteString("\n")
+		b.WriteString(dimStyle.Render(fmt.Sprintf("  %-6s %18s %18s", "CCY", "NET POSITION", "GEL EQUIV")))
+		b.WriteString("\n")
+
+		var totalGEL int64
+		for _, ccy := range currencies {
+			bal := byCurrency[ccy]
+			gelEquiv := ledger.ToGEL(bal, ccy)
+			totalGEL += gelEquiv
+			b.WriteString(fmt.Sprintf("  %-6s %14s %-3s %14s GEL\n",
+				ccy,
+				ledger.FormatAmount(bal, ccy), ccy,
+				ledger.FormatAmount(gelEquiv, ledger.ReportingCurrency)))
+		}
+		b.WriteString(fmt.Sprintf("  %s\n", strings.Repeat("─", 44)))
+		label := "Net FX PnL"
+		gelStr := ledger.FormatAmount(totalGEL, ledger.ReportingCurrency) + " GEL"
+		if totalGEL > 0 {
+			b.WriteString(successStyle.Render(fmt.Sprintf("  %-24s %14s", label, gelStr)))
+		} else if totalGEL < 0 {
+			b.WriteString(errorStyle.Render(fmt.Sprintf("  %-24s %14s", label, gelStr)))
+		} else {
+			b.WriteString(fmt.Sprintf("  %-24s %14s", label, gelStr))
+		}
+		b.WriteString("\n")
 	}
 
 	b.WriteString("\n" + dimStyle.Render("  Press ESC to go back"))

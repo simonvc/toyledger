@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/simonvc/miniledger/internal/ledger"
@@ -67,6 +68,21 @@ func (s *Store) ListAccounts(ctx context.Context, filter AccountFilter) ([]ledge
 		accounts = append(accounts, *acct)
 	}
 	return accounts, rows.Err()
+}
+
+func (s *Store) RenameAccount(ctx context.Context, id, newName string) error {
+	if strings.TrimSpace(newName) == "" {
+		return fmt.Errorf("name cannot be empty")
+	}
+	_, err := s.GetAccount(ctx, id)
+	if err != nil {
+		return err
+	}
+	_, err = s.writer.ExecContext(ctx, `UPDATE accounts SET name = ? WHERE id = ?`, newName, id)
+	if err != nil {
+		return fmt.Errorf("rename account: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) DeleteAccount(ctx context.Context, id string) error {

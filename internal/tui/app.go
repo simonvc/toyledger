@@ -20,9 +20,10 @@ const (
 	modeWizard
 	modeJournalEntry
 	modeLearn
+	modeRatios
 )
 
-var tabModes = []mode{modeAccountList, modeTransactionList, modeBalanceSheet, modeLearn}
+var tabModes = []mode{modeAccountList, modeTransactionList, modeBalanceSheet, modeRatios, modeLearn}
 
 func tabLabel(m mode) string {
 	switch m {
@@ -32,6 +33,8 @@ func tabLabel(m mode) string {
 		return "Transactions"
 	case modeBalanceSheet:
 		return "Balance Sheet"
+	case modeRatios:
+		return "Ratios"
 	case modeLearn:
 		return "Learn"
 	default:
@@ -54,6 +57,7 @@ type App struct {
 	balanceSheet  balanceSheetModel
 	wizard        wizardModel
 	journalEntry  journalEntryModel
+	ratios        ratiosModel
 	learn         learnModel
 }
 
@@ -72,6 +76,7 @@ func (a *App) Init() tea.Cmd {
 		a.accountList.init(a.client),
 		a.txnList.init(a.client),
 		a.balanceSheet.init(a.client),
+		a.ratios.init(a.client),
 	)
 }
 
@@ -90,6 +95,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.txnDetail.width = msg.Width
 		a.wizard.width = msg.Width
 		a.journalEntry.width = msg.Width
+		a.ratios.width = msg.Width
+		a.ratios.height = msg.Height - 6
 		a.learn.width = msg.Width
 		a.learn.height = msg.Height - 6
 		return a, nil
@@ -136,6 +143,27 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.accountList.init(a.client),
 			a.balanceSheet.init(a.client),
 		)
+	case accountRenameRequestMsg:
+		id := typedMsg.id
+		name := typedMsg.name
+		return a, func() tea.Msg {
+			_, err := a.client.RenameAccount(context.Background(), id, name)
+			return accountRenamedMsg{id: id, err: err}
+		}
+	case accountRenamedMsg:
+		a.accountList, _ = a.accountList.update(msg)
+		if typedMsg.err != nil {
+			return a, nil
+		}
+		a.statusMsg = "Account " + typedMsg.id + " renamed"
+		return a, tea.Batch(
+			a.accountList.init(a.client),
+			a.balanceSheet.init(a.client),
+		)
+	case ratiosLoadedMsg:
+		var cmd tea.Cmd
+		a.ratios, cmd = a.ratios.update(msg)
+		return a, cmd
 	case learnTxnCreatedMsg:
 		var cmd tea.Cmd
 		a.learn, cmd = a.learn.update(msg, a.client)
@@ -143,6 +171,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case learnAccountsLoadedMsg:
 		var cmd tea.Cmd
 		a.learn, cmd = a.learn.update(msg, a.client)
+		return a, cmd
+	case learnRatiosLoadedMsg:
+		var cmd tea.Cmd
+		a.learn, cmd = a.learn.update(msg, a.client)
+		return a, cmd
+	case jeRatiosLoadedMsg:
+		var cmd tea.Cmd
+		a.journalEntry, cmd = a.journalEntry.update(msg, a.client)
 		return a, cmd
 	}
 
@@ -174,6 +210,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.mode = modeTransactionList
 			a.statusMsg = "Transaction cancelled"
 		}
+		return a, cmd
+	}
+
+	// When account list has inline input (rename/delete confirm), delegate all keys directly
+	if a.mode == modeAccountList && (a.accountList.renaming || a.accountList.confirmDelete) {
+		var cmd tea.Cmd
+		a.accountList, cmd = a.accountList.update(msg)
 		return a, cmd
 	}
 
@@ -249,6 +292,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.txnDetail, cmd = a.txnDetail.update(msg)
 	case modeBalanceSheet:
 		a.balanceSheet, cmd = a.balanceSheet.update(msg)
+	case modeRatios:
+		a.ratios, cmd = a.ratios.update(msg)
 	case modeLearn:
 		a.learn, cmd = a.learn.update(msg, a.client)
 	}
@@ -263,6 +308,8 @@ func (a *App) refreshTab() tea.Cmd {
 		return a.txnList.init(a.client)
 	case modeBalanceSheet:
 		return a.balanceSheet.init(a.client)
+	case modeRatios:
+		return a.ratios.init(a.client)
 	}
 	return nil
 }
@@ -299,6 +346,8 @@ func (a *App) View() string {
 		content = a.wizard.view()
 	case modeJournalEntry:
 		content = a.journalEntry.view()
+	case modeRatios:
+		content = a.ratios.view()
 	case modeLearn:
 		content = a.learn.view()
 	}
@@ -312,7 +361,7 @@ func (a *App) View() string {
 		status = errorStyle.Render(a.err.Error())
 	}
 
-	helpText := dimStyle.Render("tab:switch  enter:select  esc:back  n:new account  d:delete  t:new txn  q:quit")
+	helpText := dimStyle.Render("tab:switch  enter:select  esc:back  n:new  d:delete  r:rename  t:new txn  q:quit")
 
 	return lipgloss.JoinVertical(lipgloss.Left,
 		tabs,

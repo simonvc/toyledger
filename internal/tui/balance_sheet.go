@@ -53,36 +53,46 @@ func (m *balanceSheetModel) view() string {
 	}
 
 	var b strings.Builder
-	w := 60
+	w := 72
 
 	b.WriteString(titleStyle.Render(centerStr("BALANCE SHEET", w)))
+	b.WriteString("\n")
+	b.WriteString(dimStyle.Render(centerStr("Reporting currency: "+ledger.ReportingCurrency, w)))
 	b.WriteString("\n\n")
 
-	renderSection := func(title string, lines []ledger.BalanceSheetLine, total int64) {
+	renderSection := func(title string, lines []ledger.BalanceSheetLine) int64 {
 		b.WriteString(fmt.Sprintf("  %s\n", headerStyle.Render(title)))
 		if len(lines) == 0 {
-			b.WriteString(dimStyle.Render("    (no entries)") + "\n")
+			b.WriteString(dimStyle.Render("    (no entries)") + "\n\n")
+			return 0
 		}
+		var totalGEL int64
 		for _, l := range lines {
 			name := l.AccountName
-			if len(name) > 28 {
-				name = name[:28] + ".."
+			if len(name) > 20 {
+				name = name[:20] + ".."
 			}
-			amt := formatBalanceSheetAmt(l.Balance, l.Currency)
-			b.WriteString(fmt.Sprintf("    %-6s %-28s %16s\n", l.AccountID, name, amt))
+			nativeAmt := formatBalanceSheetAmt(l.Balance, l.Currency)
+			gelAmt := ledger.ToGEL(l.Balance, l.Currency)
+			totalGEL += gelAmt
+			gelStr := formatBalanceSheetAmt(gelAmt, ledger.ReportingCurrency)
+			b.WriteString(fmt.Sprintf("    %-6s %-22s %12s %-3s  %12s GEL\n",
+				l.AccountID, name, nativeAmt, l.Currency, gelStr))
 		}
 		b.WriteString(fmt.Sprintf("    %s\n", strings.Repeat("─", w-8)))
-		b.WriteString(fmt.Sprintf("    %-35s %16s\n", "Total "+title, formatBalanceSheetAmt(total, "USD")))
+		b.WriteString(fmt.Sprintf("    %-33s %12s GEL\n",
+			"Total "+title, formatBalanceSheetAmt(totalGEL, ledger.ReportingCurrency)))
 		b.WriteString("\n")
+		return totalGEL
 	}
 
-	renderSection("Assets", m.bs.Assets, m.bs.TotalAssets)
-	renderSection("Liabilities", m.bs.Liabilities, m.bs.TotalLiabilities)
-	renderSection("Equity", m.bs.Equity, m.bs.TotalEquity)
+	renderSection("Assets", m.bs.Assets)
+	totalLiabGEL := renderSection("Liabilities", m.bs.Liabilities)
+	totalEquityGEL := renderSection("Equity", m.bs.Equity)
 
 	b.WriteString(fmt.Sprintf("    %s\n", strings.Repeat("═", w-8)))
-	b.WriteString(fmt.Sprintf("    %-35s %16s\n", "Total L + E",
-		formatBalanceSheetAmt(m.bs.TotalLiabilities+m.bs.TotalEquity, "USD")))
+	b.WriteString(fmt.Sprintf("    %-33s %12s GEL\n",
+		"Total L + E", formatBalanceSheetAmt(totalLiabGEL+totalEquityGEL, ledger.ReportingCurrency)))
 
 	b.WriteString("\n")
 	if m.bs.Balanced {

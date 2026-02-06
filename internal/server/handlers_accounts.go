@@ -111,6 +111,27 @@ func (s *Server) getAccountBalance(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) renameAccount(w http.ResponseWriter, r *http.Request) {
+	id, _ := url.PathUnescape(chi.URLParam(r, "id"))
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if err := s.store.RenameAccount(r.Context(), id, req.Name); err != nil {
+		writeError(w, mapError(err), err.Error())
+		return
+	}
+	acct, err := s.store.GetAccount(r.Context(), id)
+	if err != nil {
+		writeError(w, mapError(err), err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, acct)
+}
+
 func (s *Server) deleteAccount(w http.ResponseWriter, r *http.Request) {
 	id, _ := url.PathUnescape(chi.URLParam(r, "id"))
 	if err := s.store.DeleteAccount(r.Context(), id); err != nil {

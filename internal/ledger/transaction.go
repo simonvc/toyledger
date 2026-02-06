@@ -78,3 +78,51 @@ type TrialBalance struct {
 	Balanced    bool               `json:"balanced"`
 	GeneratedAt time.Time          `json:"generated_at"`
 }
+
+// RegulatoryRatios holds key prudential metrics.
+type RegulatoryRatios struct {
+	CapitalAdequacy  float64 `json:"capital_adequacy"`
+	LeverageRatio    float64 `json:"leverage_ratio"`
+	ReserveRatio     float64 `json:"reserve_ratio"`
+	Equity           int64   `json:"equity"`            // absolute value (negated from credit-normal)
+	TotalAssets      int64   `json:"total_assets"`
+	Reserves         int64   `json:"reserves"`           // code 1060 balances
+	CustomerDeposits int64   `json:"customer_deposits"`  // absolute value (negated from credit-normal)
+}
+
+// ProjectRatios computes projected ratios after applying proposed entries.
+// accounts maps account ID → Account for category/code lookup.
+func ProjectRatios(current *RegulatoryRatios, entries []Entry, accounts map[string]Account) *RegulatoryRatios {
+	projected := *current
+
+	for _, e := range entries {
+		acct, ok := accounts[e.AccountID]
+		if !ok {
+			continue
+		}
+		switch acct.Category {
+		case CategoryAssets:
+			projected.TotalAssets += e.Amount
+		case CategoryEquity:
+			// Equity stored as absolute; credit entries are negative amounts
+			projected.Equity += -e.Amount
+		case CategoryLiabilities:
+			if acct.Code == 2020 {
+				projected.CustomerDeposits += -e.Amount
+			}
+		}
+		if acct.Code == 1060 {
+			projected.Reserves += e.Amount
+		}
+	}
+
+	if projected.TotalAssets > 0 {
+		projected.CapitalAdequacy = float64(projected.Equity) / float64(projected.TotalAssets) * 100
+		projected.LeverageRatio = projected.CapitalAdequacy
+	}
+	if projected.CustomerDeposits > 0 {
+		projected.ReserveRatio = float64(projected.Reserves) / float64(projected.CustomerDeposits) * 100
+	}
+
+	return &projected
+}

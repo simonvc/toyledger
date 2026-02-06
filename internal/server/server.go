@@ -29,6 +29,7 @@ func New(st *store.Store, addr string) *Server {
 		r.Get("/accounts/{id}", s.getAccount)
 		r.Get("/accounts/{id}/balance", s.getAccountBalance)
 		r.Get("/accounts/{id}/entries", s.listAccountEntries)
+		r.Patch("/accounts/{id}", s.renameAccount)
 		r.Delete("/accounts/{id}", s.deleteAccount)
 
 		// Transactions
@@ -39,6 +40,7 @@ func New(st *store.Store, addr string) *Server {
 		// Reports
 		r.Get("/reports/balance-sheet", s.balanceSheet)
 		r.Get("/reports/trial-balance", s.trialBalance)
+		r.Get("/reports/ratios", s.regulatoryRatios)
 
 		// Chart of accounts reference
 		r.Get("/chart", s.getChart)

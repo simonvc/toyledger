@@ -24,6 +24,15 @@ func (s *Server) trialBalance(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, tb)
 }
 
+func (s *Server) regulatoryRatios(w http.ResponseWriter, r *http.Request) {
+	ratios, err := s.store.RegulatoryRatios(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, ratios)
+}
+
 func (s *Server) getChart(w http.ResponseWriter, r *http.Request) {
 	all := make([]ledger.ChartEntry, 0, len(ledger.PredefinedAccounts)+len(ledger.SystemAccounts))
 	all = append(all, ledger.PredefinedAccounts...)

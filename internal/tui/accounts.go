@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/simonvc/miniledger/internal/client"
 	"github.com/simonvc/miniledger/internal/ledger"
@@ -27,6 +28,18 @@ type accountDeletedMsg struct {
 	err error
 }
 
+// accountRenameRequestMsg is sent when the user submits a new name.
+type accountRenameRequestMsg struct {
+	id   string
+	name string
+}
+
+// accountRenamedMsg is sent after the server processes the rename.
+type accountRenamedMsg struct {
+	id  string
+	err error
+}
+
 type accountListModel struct {
 	accounts       []ledger.Account
 	cursor         int
@@ -36,6 +49,9 @@ type accountListModel struct {
 	height         int
 	confirmDelete  bool
 	deleteTargetID string
+	renaming       bool
+	renameTargetID string
+	renameInput    textinput.Model
 }
 
 func (m *accountListModel) init(c *client.Client) tea.Cmd {
@@ -60,7 +76,39 @@ func (m accountListModel) update(msg tea.Msg) (accountListModel, tea.Cmd) {
 			m.err = msg.err
 		}
 
+	case accountRenamedMsg:
+		m.renaming = false
+		m.renameTargetID = ""
+		if msg.err != nil {
+			m.err = msg.err
+		}
+
 	case tea.KeyMsg:
+		if m.renaming {
+			switch {
+			case key.Matches(msg, keys.Enter):
+				newName := strings.TrimSpace(m.renameInput.Value())
+				if newName == "" {
+					m.err = fmt.Errorf("name cannot be empty")
+					return m, nil
+				}
+				m.err = nil
+				id := m.renameTargetID
+				return m, func() tea.Msg {
+					return accountRenameRequestMsg{id: id, name: newName}
+				}
+			case key.Matches(msg, keys.Escape):
+				m.renaming = false
+				m.renameTargetID = ""
+				m.err = nil
+				return m, nil
+			default:
+				var cmd tea.Cmd
+				m.renameInput, cmd = m.renameInput.Update(msg)
+				return m, cmd
+			}
+		}
+
 		if m.confirmDelete {
 			switch msg.String() {
 			case "y", "Y":
@@ -89,6 +137,17 @@ func (m accountListModel) update(msg tea.Msg) (accountListModel, tea.Cmd) {
 			if id := m.selectedID(); id != "" {
 				m.confirmDelete = true
 				m.deleteTargetID = id
+				m.err = nil
+			}
+		case key.Matches(msg, keys.Rename):
+			if idx := m.cursor; idx >= 0 && idx < len(m.accounts) {
+				acct := m.accounts[idx]
+				m.renaming = true
+				m.renameTargetID = acct.ID
+				m.renameInput = textinput.New()
+				m.renameInput.SetValue(acct.Name)
+				m.renameInput.CharLimit = 60
+				m.renameInput.Focus()
 				m.err = nil
 			}
 		}
@@ -152,7 +211,10 @@ func (m *accountListModel) view() string {
 		b.WriteString("\n")
 	}
 
-	if m.confirmDelete {
+	if m.renaming {
+		b.WriteString(fmt.Sprintf("\n  Rename %s: ", m.renameTargetID))
+		b.WriteString(m.renameInput.View())
+	} else if m.confirmDelete {
 		b.WriteString("\n" + errorStyle.Render(fmt.Sprintf("  Delete account %q? (y/n)", m.deleteTargetID)))
 	} else {
 		b.WriteString(fmt.Sprintf("\n  %d accounts", len(m.accounts)))

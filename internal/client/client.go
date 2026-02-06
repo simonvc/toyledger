@@ -93,6 +93,15 @@ func (c *Client) ListAccountEntries(ctx context.Context, id string) ([]ledger.En
 	return result, nil
 }
 
+func (c *Client) RenameAccount(ctx context.Context, id, newName string) (*ledger.Account, error) {
+	body := map[string]any{"name": newName}
+	var result ledger.Account
+	if err := c.patch(ctx, "/api/v1/accounts/"+url.PathEscape(id), body, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 func (c *Client) DeleteAccount(ctx context.Context, id string) error {
 	return c.del(ctx, "/api/v1/accounts/"+url.PathEscape(id))
 }
@@ -154,6 +163,14 @@ func (c *Client) TrialBalance(ctx context.Context) (*ledger.TrialBalance, error)
 	return &result, nil
 }
 
+func (c *Client) RegulatoryRatios(ctx context.Context) (*ledger.RegulatoryRatios, error) {
+	var result ledger.RegulatoryRatios
+	if err := c.get(ctx, "/api/v1/reports/ratios", &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 func (c *Client) GetChart(ctx context.Context) ([]ledger.ChartEntry, error) {
 	var result []ledger.ChartEntry
 	if err := c.get(ctx, "/api/v1/chart", &result); err != nil {
@@ -203,6 +220,19 @@ func (c *Client) del(ctx context.Context, path string) error {
 		return fmt.Errorf("server error (%d): %s", resp.StatusCode, string(bodyBytes))
 	}
 	return nil
+}
+
+func (c *Client) patch(ctx context.Context, path string, body any, result any) error {
+	data, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("marshal body: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, "PATCH", c.baseURL+path, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return c.doRequest(req, result)
 }
 
 func (c *Client) post(ctx context.Context, path string, body any, result any) error {

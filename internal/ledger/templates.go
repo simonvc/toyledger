@@ -6,9 +6,10 @@ import "fmt"
 // CoACode is the suggested IFRS Chart of Accounts code (e.g. "1010").
 // The user picks the actual account ID when executing the template.
 type TemplateEntry struct {
-	CoACode  int    `json:"coa_code"`
-	Role     string `json:"role"` // human label like "Cash account", "Revenue account"
-	IsDebit  bool   `json:"is_debit"`
+	CoACode int    `json:"coa_code"`
+	Role    string `json:"role"`     // human label like "Cash account", "Revenue account"
+	IsDebit bool   `json:"is_debit"`
+	Group   int    `json:"group"`    // 0 = default/source side, 1 = destination side (for multi-currency)
 }
 
 // Template defines a reusable transaction pattern for learning.
@@ -116,6 +117,26 @@ var Templates = []Template{
 			{CoACode: 4099, Role: "Interest income account", IsDebit: false},
 		},
 	},
+	{
+		Name:        "FX Conversion",
+		Description: "Convert between currencies via the ~fx intermediary. Source currency debits ~fx and credits the source account; destination currency debits the destination account and credits ~fx. Each currency balances independently.",
+		Entries: []TemplateEntry{
+			{CoACode: 1097, Role: "FX intermediary (source)", IsDebit: true, Group: 0},
+			{CoACode: 1010, Role: "Source currency account", IsDebit: false, Group: 0},
+			{CoACode: 1010, Role: "Destination currency account", IsDebit: true, Group: 1},
+			{CoACode: 1097, Role: "FX intermediary (dest)", IsDebit: false, Group: 1},
+		},
+	},
+}
+
+// IsMultiCurrency returns true if the template has entries in multiple groups.
+func (t *Template) IsMultiCurrency() bool {
+	for _, e := range t.Entries {
+		if e.Group > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // DefaultAccountForCoA returns the default account ID for a given CoA code.

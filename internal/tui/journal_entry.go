@@ -41,6 +41,11 @@ type txnCreatedMsg struct {
 	err error
 }
 
+type jeRatiosLoadedMsg struct {
+	ratios *ledger.RegulatoryRatios
+	err    error
+}
+
 type journalEntryModel struct {
 	step        jeStep
 	description textinput.Model
@@ -56,6 +61,9 @@ type journalEntryModel struct {
 
 	// Account list for reference
 	accounts []ledger.Account
+
+	// Ratios for impact preview
+	ratios *ledger.RegulatoryRatios
 
 	err       error
 	done      bool
@@ -101,6 +109,12 @@ func (m journalEntryModel) update(msg tea.Msg, c *client.Client) (journalEntryMo
 		m.accounts = msg.accounts
 		return m, nil
 
+	case jeRatiosLoadedMsg:
+		if msg.err == nil {
+			m.ratios = msg.ratios
+		}
+		return m, nil
+
 	case txnCreatedMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -117,22 +131,37 @@ func (m journalEntryModel) update(msg tea.Msg, c *client.Client) (journalEntryMo
 			return m, nil
 		}
 
+		prevStep := m.step
+		var cmd tea.Cmd
 		switch m.step {
 		case jeStepDescription:
-			return m.updateDescription(msg)
+			m, cmd = m.updateDescription(msg)
 		case jeStepEntryAccount:
-			return m.updateEntryAccount(msg)
+			m, cmd = m.updateEntryAccount(msg)
 		case jeStepEntryType:
-			return m.updateEntryType(msg)
+			m, cmd = m.updateEntryType(msg)
 		case jeStepEntryAmount:
-			return m.updateEntryAmount(msg)
+			m, cmd = m.updateEntryAmount(msg)
 		case jeStepEntryCurrency:
-			return m.updateEntryCurrency(msg)
+			m, cmd = m.updateEntryCurrency(msg)
 		case jeStepEntryMore:
-			return m.updateEntryMore(msg)
+			m, cmd = m.updateEntryMore(msg)
 		case jeStepConfirm:
-			return m.updateConfirm(msg, c)
+			m, cmd = m.updateConfirm(msg, c)
 		}
+
+		// Load ratios when entering confirm step
+		if prevStep != jeStepConfirm && m.step == jeStepConfirm {
+			loadRatios := func() tea.Msg {
+				ratios, err := c.RegulatoryRatios(context.Background())
+				return jeRatiosLoadedMsg{ratios: ratios, err: err}
+			}
+			if cmd != nil {
+				return m, tea.Batch(cmd, loadRatios)
+			}
+			return m, loadRatios
+		}
+		return m, cmd
 	}
 	return m, nil
 }
@@ -492,6 +521,30 @@ func (m *journalEntryModel) view() string {
 
 		b.WriteString(boxStyle.Render(summary.String()))
 		b.WriteString("\n\n")
+
+		// Ratio impact
+		if m.ratios != nil {
+			acctMap := make(map[string]ledger.Account, len(m.accounts))
+			for _, a := range m.accounts {
+				acctMap[a.ID] = a
+			}
+			var proposedEntries []ledger.Entry
+			for _, e := range m.entries {
+				minor, _ := ledger.ToMinorUnits(e.amount, e.currency)
+				if !e.isDebit {
+					minor = -minor
+				}
+				proposedEntries = append(proposedEntries, ledger.Entry{
+					AccountID: e.accountID,
+					Amount:    minor,
+					Currency:  e.currency,
+				})
+			}
+			projected := ledger.ProjectRatios(m.ratios, proposedEntries, acctMap)
+			b.WriteString(RenderRatioImpact(m.ratios, projected))
+			b.WriteString("\n")
+		}
+
 		b.WriteString("  Post this transaction? (y/n)\n")
 	}
 
