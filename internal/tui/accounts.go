@@ -220,5 +220,19 @@ func (m *accountListModel) view() string {
 		b.WriteString(fmt.Sprintf("\n  %d accounts", len(m.accounts)))
 	}
 
+	// IFRS callout for selected account
+	if idx := m.cursor; idx >= 0 && idx < len(m.accounts) {
+		acct := m.accounts[idx]
+		if entry := ledger.LookupChartEntry(acct.Code); entry != nil {
+			info := fmt.Sprintf(
+				"%s  IFRS %d — %s\n%s  %s",
+				headerStyle.Render(""), entry.Code, entry.Name,
+				dimStyle.Render(""), entry.Description,
+			)
+			b.WriteString("\n\n")
+			b.WriteString(boxStyle.Render(info))
+		}
+	}
+
 	return b.String()
 }

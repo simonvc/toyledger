@@ -252,12 +252,29 @@ func (m *wizardModel) view() string {
 		b.WriteString(fmt.Sprintf("  Enter account code (%d-%d):\n\n", low, high))
 		b.WriteString("  " + m.code.View() + "\n")
 
-		// Show predefined accounts in this range as reference
-		b.WriteString("\n" + dimStyle.Render("  Existing IFRS codes in this category:") + "\n")
-		for _, pa := range ledger.PredefinedAccounts {
-			if pa.Code >= low && pa.Code <= high {
-				b.WriteString(dimStyle.Render(fmt.Sprintf("    %d - %s", pa.Code, pa.Name)) + "\n")
+		// Show all IFRS codes filtered by typed prefix
+		typed := m.code.Value()
+		b.WriteString("\n" + dimStyle.Render("  IFRS Chart of Accounts:") + "\n")
+		shown := 0
+		for _, entry := range ledger.AllChartEntries() {
+			codeStr := strconv.Itoa(entry.Code)
+			if typed != "" && !strings.HasPrefix(codeStr, typed) {
+				continue
 			}
+			marker := "  "
+			if entry.Code >= low && entry.Code <= high {
+				marker = dimStyle.Render("▸ ")
+			}
+			label := fmt.Sprintf("  %s%d  %-30s  %s", marker, entry.Code, entry.Name, entry.Description)
+			if entry.Code >= low && entry.Code <= high {
+				b.WriteString(fmt.Sprintf("  %s\n", label))
+			} else {
+				b.WriteString(dimStyle.Render(fmt.Sprintf("  %s\n", label)))
+			}
+			shown++
+		}
+		if shown == 0 && typed != "" {
+			b.WriteString(dimStyle.Render("    (no matching codes)") + "\n")
 		}
 
 	case stepID:

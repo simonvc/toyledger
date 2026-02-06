@@ -54,12 +54,25 @@ var SystemAccounts = []ChartEntry{
 	{Code: 5091, ID: "~writeoff", Name: "Write-offs", Category: CategoryExpenses, IsSystem: true, Description: "Bad debt write-offs, failed payments, irrecoverable amounts"},
 }
 
-// LookupChartEntry finds a chart entry by code.
+// LookupChartEntry finds a chart entry by code (checks predefined and system accounts).
 func LookupChartEntry(code int) *ChartEntry {
 	for i := range PredefinedAccounts {
 		if PredefinedAccounts[i].Code == code {
 			return &PredefinedAccounts[i]
 		}
 	}
+	for i := range SystemAccounts {
+		if SystemAccounts[i].Code == code {
+			return &SystemAccounts[i]
+		}
+	}
 	return nil
+}
+
+// AllChartEntries returns predefined + system accounts combined.
+func AllChartEntries() []ChartEntry {
+	all := make([]ChartEntry, 0, len(PredefinedAccounts)+len(SystemAccounts))
+	all = append(all, PredefinedAccounts...)
+	all = append(all, SystemAccounts...)
+	return all
 }
