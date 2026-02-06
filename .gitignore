@@ -1,0 +1,4 @@
+ledger.db
+*.sqlite
+miniledger
+/dist/

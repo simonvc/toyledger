@@ -1,0 +1,122 @@
+package store
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/simonvc/miniledger/internal/ledger"
+)
+
+func (s *Store) AccountBalance(ctx context.Context, accountID string) (int64, string, error) {
+	// Verify account exists
+	acct, err := s.GetAccount(ctx, accountID)
+	if err != nil {
+		return 0, "", err
+	}
+
+	var balance int64
+	err = s.reader.QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(e.amount), 0)
+		FROM entries e
+		JOIN transactions t ON t.id = e.transaction_id
+		WHERE e.account_id = ? AND t.finalized = 1`, accountID,
+	).Scan(&balance)
+	if err != nil {
+		return 0, "", fmt.Errorf("account balance: %w", err)
+	}
+
+	return balance, acct.Currency, nil
+}
+
+func (s *Store) BalanceSheet(ctx context.Context) (*ledger.BalanceSheet, error) {
+	rows, err := s.reader.QueryContext(ctx,
+		`SELECT a.id, a.name, a.category, a.currency, COALESCE(SUM(e.amount), 0) as balance
+		FROM accounts a
+		LEFT JOIN entries e ON e.account_id = a.id
+		LEFT JOIN transactions t ON t.id = e.transaction_id AND t.finalized = 1
+		GROUP BY a.id
+		HAVING balance != 0
+		ORDER BY a.code`)
+	if err != nil {
+		return nil, fmt.Errorf("balance sheet query: %w", err)
+	}
+	defer rows.Close()
+
+	bs := &ledger.BalanceSheet{
+		GeneratedAt: time.Now().UTC(),
+	}
+
+	for rows.Next() {
+		var line ledger.BalanceSheetLine
+		var category string
+		if err := rows.Scan(&line.AccountID, &line.AccountName, &category, &line.Currency, &line.Balance); err != nil {
+			return nil, fmt.Errorf("scan balance sheet: %w", err)
+		}
+
+		switch ledger.Category(category) {
+		case ledger.CategoryAssets:
+			bs.Assets = append(bs.Assets, line)
+			bs.TotalAssets += line.Balance
+		case ledger.CategoryLiabilities:
+			bs.Liabilities = append(bs.Liabilities, line)
+			bs.TotalLiabilities += line.Balance
+		case ledger.CategoryEquity:
+			bs.Equity = append(bs.Equity, line)
+			bs.TotalEquity += line.Balance
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Assets = Liabilities + Equity (debits are positive for assets, credits are negative for liabilities/equity)
+	// In our system, asset balances are positive (net debits), liability/equity are negative (net credits)
+	// So balanced means: TotalAssets + TotalLiabilities + TotalEquity = 0
+	bs.Balanced = (bs.TotalAssets + bs.TotalLiabilities + bs.TotalEquity) == 0
+
+	return bs, nil
+}
+
+func (s *Store) TrialBalance(ctx context.Context) (*ledger.TrialBalance, error) {
+	rows, err := s.reader.QueryContext(ctx,
+		`SELECT a.id, a.name, a.currency, COALESCE(SUM(e.amount), 0) as balance
+		FROM accounts a
+		LEFT JOIN entries e ON e.account_id = a.id
+		LEFT JOIN transactions t ON t.id = e.transaction_id AND t.finalized = 1
+		GROUP BY a.id
+		HAVING balance != 0
+		ORDER BY a.code`)
+	if err != nil {
+		return nil, fmt.Errorf("trial balance query: %w", err)
+	}
+	defer rows.Close()
+
+	tb := &ledger.TrialBalance{
+		GeneratedAt: time.Now().UTC(),
+	}
+
+	for rows.Next() {
+		var line ledger.TrialBalanceLine
+		var balance int64
+		if err := rows.Scan(&line.AccountID, &line.AccountName, &line.Currency, &balance); err != nil {
+			return nil, fmt.Errorf("scan trial balance: %w", err)
+		}
+
+		if balance > 0 {
+			line.Debit = balance
+			tb.TotalDebit += balance
+		} else {
+			line.Credit = -balance
+			tb.TotalCredit += -balance
+		}
+
+		tb.Lines = append(tb.Lines, line)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	tb.Balanced = tb.TotalDebit == tb.TotalCredit
+	return tb, nil
+}
