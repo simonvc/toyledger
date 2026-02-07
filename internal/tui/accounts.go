@@ -192,7 +192,7 @@ func (m *accountListModel) view() string {
 	b.WriteString("\n")
 
 	// Header
-	header := fmt.Sprintf("  %-12s %-28s %6s %-15s %18s %s", "ID", "NAME", "CODE", "CATEGORY", "BALANCE", "CCY")
+	header := fmt.Sprintf("  %-12s %-28s %6s %-15s %-7s %18s %s", "ID", "NAME", "CODE", "CATEGORY", "NORMAL", "BALANCE", "CCY")
 	b.WriteString(headerStyle.Render(header))
 	b.WriteString("\n")
 
@@ -214,11 +214,12 @@ func (m *accountListModel) view() string {
 			name = name[:26] + ".."
 		}
 
+		normal := ledger.NormalBalance(a.Category)
 		balStr := ""
 		if bal, ok := m.balances[a.ID]; ok {
 			balStr = ledger.FormatAmount(bal.Balance, bal.Currency)
 		}
-		line := fmt.Sprintf("  %-12s %-28s %6d %-15s %18s %s", a.ID, name, a.Code, a.Category, balStr, a.Currency)
+		line := fmt.Sprintf("  %-12s %-28s %6d %-15s %-7s %18s %s", a.ID, name, a.Code, a.Category, normal, balStr, a.Currency)
 		if i == m.cursor {
 			b.WriteString(selectedStyle.Render("> " + line[2:]))
 		} else {
