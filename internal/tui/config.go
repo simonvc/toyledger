@@ -270,6 +270,8 @@ func (m *configModel) view() string {
 
 	b.WriteString(titleStyle.Render("Code Settings"))
 	b.WriteString("\n")
+	b.WriteString(subtitleStyle.Render("  Configure constraints to prevent overdrafts, wrong-way entries, and balance inversions"))
+	b.WriteString("\n\n")
 
 	// Column widths
 	codeW := 6
@@ -288,7 +290,8 @@ func (m *configModel) view() string {
 	b.WriteString(headerStyle.Render(header))
 	b.WriteString("\n")
 
-	maxRows := m.height - 14
+	// Budget: title(1) + subtitle(1) + blank(1) + header(1) + footer(2) + callout(~10) = 16 fixed lines
+	maxRows := m.height - 17
 	if maxRows < 5 {
 		maxRows = 5
 	}
