@@ -22,10 +22,11 @@ const (
 	modeLearn
 	modeRatios
 	modeOTCFX
+	modePositions
 	modeConfig
 )
 
-var tabModes = []mode{modeAccountList, modeTransactionList, modeBalanceSheet, modeRatios, modeOTCFX, modeConfig, modeLearn}
+var tabModes = []mode{modeAccountList, modeTransactionList, modeBalanceSheet, modeRatios, modeOTCFX, modePositions, modeConfig, modeLearn}
 
 func tabLabel(m mode) string {
 	switch m {
@@ -39,6 +40,8 @@ func tabLabel(m mode) string {
 		return "Ratios"
 	case modeOTCFX:
 		return "OTC FX"
+	case modePositions:
+		return "Positions"
 	case modeConfig:
 		return "Config"
 	case modeLearn:
@@ -65,6 +68,7 @@ type App struct {
 	journalEntry  journalEntryModel
 	ratios        ratiosModel
 	otcFX         otcFXModel
+	positions     positionsModel
 	config        configModel
 	learn         learnModel
 }
@@ -87,6 +91,7 @@ func (a *App) Init() tea.Cmd {
 		a.balanceSheet.init(a.client),
 		a.ratios.init(a.client),
 		a.otcFX.init(a.client),
+		a.positions.init(a.client),
 	)
 }
 
@@ -109,6 +114,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.ratios.height = msg.Height - 6
 		a.otcFX.width = msg.Width
 		a.otcFX.height = msg.Height - 6
+		a.positions.width = msg.Width
+		a.positions.height = msg.Height - 6
 		a.config.width = msg.Width
 		a.config.height = msg.Height - 6
 		a.learn.width = msg.Width
@@ -181,6 +188,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case otcFXTxnCreatedMsg:
 		var cmd tea.Cmd
 		a.otcFX, cmd = a.otcFX.update(msg, a.client)
+		return a, cmd
+	case positionsLoadedMsg:
+		var cmd tea.Cmd
+		a.positions, cmd = a.positions.update(msg)
 		return a, cmd
 	case ratiosLoadedMsg:
 		var cmd tea.Cmd
@@ -346,6 +357,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.ratios, cmd = a.ratios.update(msg)
 	case modeOTCFX:
 		a.otcFX, cmd = a.otcFX.update(msg, a.client)
+	case modePositions:
+		a.positions, cmd = a.positions.update(msg)
 	case modeConfig:
 		a.config, cmd = a.config.update(msg, a.client)
 	case modeLearn:
@@ -366,6 +379,8 @@ func (a *App) refreshTab() tea.Cmd {
 		return a.ratios.init(a.client)
 	case modeOTCFX:
 		return a.otcFX.init(a.client)
+	case modePositions:
+		return a.positions.init(a.client)
 	case modeConfig:
 		return a.config.init(a.client)
 	}
@@ -408,6 +423,8 @@ func (a *App) View() string {
 		content = a.ratios.view()
 	case modeOTCFX:
 		content = a.otcFX.view()
+	case modePositions:
+		content = a.positions.view()
 	case modeConfig:
 		content = a.config.view()
 	case modeLearn:
