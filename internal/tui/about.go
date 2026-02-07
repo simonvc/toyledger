@@ -124,15 +124,15 @@ func (m *aboutModel) viewMenu() string {
 	}
 
 	b.WriteString(m.separator() + "\n")
-	b.WriteString(bbsGreen.Render(center("BULLETIN BOARD SYSTEM v1.0", 70)) + "\n")
+	b.WriteString(bbsGreen.Render(center("MAINFRAME v1.0", 70)) + "\n")
 	b.WriteString(bbsBold.Render(center("Licensed Bank of Georgia #305", 70)) + "\n")
 	b.WriteString(m.separator() + "\n")
 	b.WriteString("\n")
 
 	// Main Menu label
-	b.WriteString(bbsBar.Render("  MAIN MENU  ") + "\n")
+	b.WriteString(bbsBar.Render("  MAIN MENU  ") + "  " + bbsDim.Render("Press Tab to change page") + "\n")
 	b.WriteString("\n")
-	b.WriteString(bbsGreen.Render("Welcome to PAVE BANK BBS!") + "\n")
+	b.WriteString(bbsGreen.Render("Welcome to PAVE BANK MAINFRAME!") + "\n")
 	b.WriteString(m.thinSeparator() + "\n")
 	b.WriteString("\n")
 
@@ -162,18 +162,45 @@ func (m *aboutModel) viewMenu() string {
 		}
 	}
 
-	b.WriteString("\n")
+	body := b.String()
 
-	// Status bar
+	// Horizontal centering: content block is ≤78 chars wide.
+	contentW := m.width - 4
+	if contentW > 76 {
+		contentW = 76
+	}
+	contentW += 2 // "  " prefix on separators
+	leftPad := ""
+	if m.width > contentW {
+		leftPad = strings.Repeat(" ", (m.width-contentW)/2)
+	}
+
+	lines := strings.Split(body, "\n")
+	for i, line := range lines {
+		if line != "" {
+			lines[i] = leftPad + line
+		}
+	}
+	body = strings.Join(lines, "\n")
+
+	// Status bar (full width, not centered)
 	left := " [1-7] Select "
 	right := " User: guest "
 	gap := m.width - len(left) - len(right)
 	if gap < 2 {
 		gap = 2
 	}
-	b.WriteString(bbsBar.Render(left + strings.Repeat(" ", gap) + right))
+	statusBar := bbsBar.Render(left + strings.Repeat(" ", gap) + right)
 
-	return b.String()
+	// Vertical centering: pad body lines above, status bar pinned below
+	bodyLines := strings.Count(body, "\n") + 1
+	totalLines := bodyLines + 2 // +2 for blank line + status bar
+	topPad := 0
+	if m.height > totalLines {
+		topPad = (m.height - totalLines) / 2
+	}
+
+	return strings.Repeat("\n", topPad) + body + "\n\n" + statusBar
 }
 
 func (m *aboutModel) viewContentPage(title, content string) string {
