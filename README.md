@@ -1,5 +1,9 @@
 # miniledger
 
+<p align="center">
+  <img src="demo.gif" alt="miniledger TUI demo" width="800">
+</p>
+
 A double-entry accounting ledger backed by SQLite, with CLI, TUI, and HTTP server modes. Follows IFRS chart of accounts and enforces balanced transactions at both application and database level.
 
 ## Features
