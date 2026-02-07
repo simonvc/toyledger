@@ -37,15 +37,113 @@ func (s *Store) CreateTransaction(ctx context.Context, txn *ledger.Transaction) 
 		return fmt.Errorf("insert transaction: %w", err)
 	}
 
-	// Insert all entries
+	// Collect account codes for settings enforcement
+	accountCodes := map[string]int{}    // account_id -> code
+	accountCats := map[string]string{}  // account_id -> category
+	for _, e := range txn.Entries {
+		if _, ok := accountCodes[e.AccountID]; !ok {
+			var code int
+			var cat string
+			err := tx.QueryRowContext(ctx,
+				`SELECT code, category FROM accounts WHERE id = ?`, e.AccountID).Scan(&code, &cat)
+			if err != nil {
+				return fmt.Errorf("lookup account %s: %w", e.AccountID, err)
+			}
+			accountCodes[e.AccountID] = code
+			accountCats[e.AccountID] = cat
+		}
+	}
+
+	// Load settings for all involved codes
+	codeSettingsCache := map[int]ledger.CodeSettings{}
+	for _, code := range accountCodes {
+		if _, ok := codeSettingsCache[code]; !ok {
+			var cs ledger.CodeSettings
+			cs = ledger.DefaultCodeSettings(code)
+			rows, qerr := tx.QueryContext(ctx,
+				`SELECT setting, value FROM coa_settings WHERE code = ?`, code)
+			if qerr != nil {
+				return fmt.Errorf("load code settings %d: %w", code, qerr)
+			}
+			for rows.Next() {
+				var name ledger.SettingName
+				var value string
+				if err := rows.Scan(&name, &value); err != nil {
+					rows.Close()
+					return fmt.Errorf("scan code setting: %w", err)
+				}
+				switch name {
+				case ledger.SettingBlockInverted:
+					cs.BlockInverted = value == "1"
+				case ledger.SettingEntryDirection:
+					cs.EntryDirection = ledger.EntryDirection(value)
+				}
+			}
+			rows.Close()
+			codeSettingsCache[code] = cs
+		}
+	}
+
+	// Insert all entries (with entry direction check)
 	for i := range txn.Entries {
 		txn.Entries[i].TransactionID = txn.ID
+		code := accountCodes[txn.Entries[i].AccountID]
+		cs := codeSettingsCache[code]
+
+		// Entry direction enforcement
+		if cs.EntryDirection == ledger.DirectionDebitOnly && txn.Entries[i].Amount < 0 {
+			return fmt.Errorf("%w: account %s (code %d) only allows debit entries",
+				ledger.ErrEntryDirectionViolation, txn.Entries[i].AccountID, code)
+		}
+		if cs.EntryDirection == ledger.DirectionCreditOnly && txn.Entries[i].Amount > 0 {
+			return fmt.Errorf("%w: account %s (code %d) only allows credit entries",
+				ledger.ErrEntryDirectionViolation, txn.Entries[i].AccountID, code)
+		}
+
 		_, err = tx.ExecContext(ctx,
 			`INSERT INTO entries (transaction_id, account_id, amount, currency) VALUES (?, ?, ?, ?)`,
 			txn.ID, txn.Entries[i].AccountID, txn.Entries[i].Amount, txn.Entries[i].Currency,
 		)
 		if err != nil {
 			return fmt.Errorf("insert entry %d: %w", i, err)
+		}
+	}
+
+	// Block inverted balance check (before finalization)
+	for acctID, code := range accountCodes {
+		cs := codeSettingsCache[code]
+		if !cs.BlockInverted {
+			continue
+		}
+
+		// Compute projected balance: existing finalized + this txn's entries
+		var existingBalance int64
+		err := tx.QueryRowContext(ctx,
+			`SELECT COALESCE(SUM(e.amount), 0) FROM entries e
+			 JOIN transactions t ON t.id = e.transaction_id AND t.finalized = 1
+			 WHERE e.account_id = ?`, acctID).Scan(&existingBalance)
+		if err != nil {
+			return fmt.Errorf("check balance for %s: %w", acctID, err)
+		}
+
+		var txnAmount int64
+		for _, e := range txn.Entries {
+			if e.AccountID == acctID {
+				txnAmount += e.Amount
+			}
+		}
+
+		projected := existingBalance + txnAmount
+		cat := accountCats[acctID]
+		isDebitNormal := cat == "assets" || cat == "expenses"
+
+		if isDebitNormal && projected < 0 {
+			return fmt.Errorf("%w: account %s (code %d) would have negative balance %d",
+				ledger.ErrInvertedBalance, acctID, code, projected)
+		}
+		if !isDebitNormal && projected > 0 {
+			return fmt.Errorf("%w: account %s (code %d) would have positive balance %d",
+				ledger.ErrInvertedBalance, acctID, code, projected)
 		}
 	}
 

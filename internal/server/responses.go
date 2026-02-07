@@ -40,6 +40,9 @@ func mapError(err error) int {
 		errors.Is(err, ledger.ErrSystemAccountPrefix),
 		errors.Is(err, ledger.ErrNonSystemAccountTilde):
 		return http.StatusBadRequest
+	case errors.Is(err, ledger.ErrInvertedBalance),
+		errors.Is(err, ledger.ErrEntryDirectionViolation):
+		return http.StatusUnprocessableEntity
 	default:
 		return http.StatusInternalServerError
 	}

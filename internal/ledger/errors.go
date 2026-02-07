@@ -16,5 +16,7 @@ var (
 	ErrCurrencyMismatch      = errors.New("entry currency does not match account currency")
 	ErrAccountNotFound       = errors.New("account not found")
 	ErrTransactionNotFound   = errors.New("transaction not found")
-	ErrDuplicateAccount      = errors.New("account already exists")
+	ErrDuplicateAccount        = errors.New("account already exists")
+	ErrInvertedBalance         = errors.New("transaction would create inverted balance")
+	ErrEntryDirectionViolation = errors.New("entry violates direction constraint")
 )

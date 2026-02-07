@@ -36,6 +36,12 @@ func (s *Store) migrate(ctx context.Context) error {
 		}
 	}
 
+	if version < 2 {
+		if err := migrateV2(ctx, tx); err != nil {
+			return fmt.Errorf("migration v2: %w", err)
+		}
+	}
+
 	return tx.Commit()
 }
 
@@ -147,6 +153,113 @@ func migrateV1(ctx context.Context, tx *sql.Tx) error {
 		)
 		if err != nil {
 			return fmt.Errorf("seed system account %s: %w", sa.ID, err)
+		}
+	}
+
+	return nil
+}
+
+func migrateV2(ctx context.Context, tx *sql.Tx) error {
+	stmts := []string{
+		// Per-CoA-code settings table
+		`CREATE TABLE IF NOT EXISTS coa_settings (
+			code    INTEGER NOT NULL,
+			setting TEXT NOT NULL,
+			value   TEXT NOT NULL,
+			PRIMARY KEY (code, setting)
+		)`,
+
+		// Trigger: enforce ENTRY_DIRECTION on entry insert.
+		// DEBIT_ONLY means amount must be > 0 (positive = debit).
+		// CREDIT_ONLY means amount must be < 0 (negative = credit).
+		`CREATE TRIGGER IF NOT EXISTS trg_entry_direction
+		BEFORE INSERT ON entries
+		WHEN EXISTS (
+			SELECT 1 FROM coa_settings cs
+			JOIN accounts a ON a.code = cs.code
+			WHERE a.id = NEW.account_id
+			  AND cs.setting = 'ENTRY_DIRECTION'
+			  AND (
+				(cs.value = 'DEBIT_ONLY' AND NEW.amount < 0)
+				OR (cs.value = 'CREDIT_ONLY' AND NEW.amount > 0)
+			  )
+		)
+		BEGIN
+			SELECT RAISE(ABORT, 'entry violates direction constraint');
+		END`,
+
+		// Trigger: enforce BLOCK_NORMAL_INVERTED on finalization.
+		// Debit-normal accounts (assets 1xxx, expenses 5xxx): balance must not go negative.
+		// Credit-normal accounts (liabilities 2xxx, equity 3xxx, revenue 4xxx): balance must not go positive.
+		`CREATE TRIGGER IF NOT EXISTS trg_block_inverted_balance
+		BEFORE UPDATE OF finalized ON transactions
+		WHEN NEW.finalized = 1
+		BEGIN
+			SELECT CASE
+				WHEN EXISTS (
+					SELECT 1
+					FROM entries e
+					JOIN accounts a ON a.id = e.account_id
+					JOIN coa_settings cs ON cs.code = a.code AND cs.setting = 'BLOCK_NORMAL_INVERTED' AND cs.value = '1'
+					WHERE e.transaction_id = NEW.id
+					  AND a.code >= 1000 AND a.code < 2000
+					GROUP BY e.account_id
+					HAVING (
+						COALESCE((SELECT SUM(e2.amount) FROM entries e2
+						          JOIN transactions t2 ON t2.id = e2.transaction_id AND t2.finalized = 1
+						          WHERE e2.account_id = e.account_id), 0)
+						+ SUM(e.amount)
+					) < 0
+				)
+				THEN RAISE(ABORT, 'transaction would create inverted balance on debit-normal account')
+			END;
+			SELECT CASE
+				WHEN EXISTS (
+					SELECT 1
+					FROM entries e
+					JOIN accounts a ON a.id = e.account_id
+					JOIN coa_settings cs ON cs.code = a.code AND cs.setting = 'BLOCK_NORMAL_INVERTED' AND cs.value = '1'
+					WHERE e.transaction_id = NEW.id
+					  AND a.code >= 5000 AND a.code < 6000
+					GROUP BY e.account_id
+					HAVING (
+						COALESCE((SELECT SUM(e2.amount) FROM entries e2
+						          JOIN transactions t2 ON t2.id = e2.transaction_id AND t2.finalized = 1
+						          WHERE e2.account_id = e.account_id), 0)
+						+ SUM(e.amount)
+					) < 0
+				)
+				THEN RAISE(ABORT, 'transaction would create inverted balance on debit-normal account')
+			END;
+			SELECT CASE
+				WHEN EXISTS (
+					SELECT 1
+					FROM entries e
+					JOIN accounts a ON a.id = e.account_id
+					JOIN coa_settings cs ON cs.code = a.code AND cs.setting = 'BLOCK_NORMAL_INVERTED' AND cs.value = '1'
+					WHERE e.transaction_id = NEW.id
+					  AND ((a.code >= 2000 AND a.code < 3000)
+					    OR (a.code >= 3000 AND a.code < 4000)
+					    OR (a.code >= 4000 AND a.code < 5000))
+					GROUP BY e.account_id
+					HAVING (
+						COALESCE((SELECT SUM(e2.amount) FROM entries e2
+						          JOIN transactions t2 ON t2.id = e2.transaction_id AND t2.finalized = 1
+						          WHERE e2.account_id = e.account_id), 0)
+						+ SUM(e.amount)
+					) > 0
+				)
+				THEN RAISE(ABORT, 'transaction would create inverted balance on credit-normal account')
+			END;
+		END`,
+
+		// Record schema version
+		`INSERT INTO schema_version (version) VALUES (2)`,
+	}
+
+	for _, stmt := range stmts {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("exec %q: %w", stmt[:60], err)
 		}
 	}
 

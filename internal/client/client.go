@@ -179,6 +179,33 @@ func (c *Client) GetChart(ctx context.Context) ([]ledger.ChartEntry, error) {
 	return result, nil
 }
 
+func (c *Client) ListSettings(ctx context.Context) ([]ledger.CoASetting, error) {
+	var result []ledger.CoASetting
+	if err := c.get(ctx, "/api/v1/settings", &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (c *Client) GetCodeSettings(ctx context.Context, code int) (*ledger.CodeSettings, error) {
+	var result ledger.CodeSettings
+	if err := c.get(ctx, fmt.Sprintf("/api/v1/settings/%d", code), &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *Client) UpsertSetting(ctx context.Context, code int, setting ledger.SettingName, value string) error {
+	body := map[string]string{"value": value}
+	path := fmt.Sprintf("/api/v1/settings/%d/%s", code, url.PathEscape(string(setting)))
+	return c.put(ctx, path, body)
+}
+
+func (c *Client) DeleteSetting(ctx context.Context, code int, setting ledger.SettingName) error {
+	path := fmt.Sprintf("/api/v1/settings/%d/%s", code, url.PathEscape(string(setting)))
+	return c.del(ctx, path)
+}
+
 // Ping checks if the server is reachable.
 func (c *Client) Ping(ctx context.Context) error {
 	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/api/v1/chart", nil)
@@ -233,6 +260,32 @@ func (c *Client) patch(ctx context.Context, path string, body any, result any) e
 	}
 	req.Header.Set("Content-Type", "application/json")
 	return c.doRequest(req, result)
+}
+
+func (c *Client) put(ctx context.Context, path string, body any) error {
+	data, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("marshal body: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, "PUT", c.baseURL+path, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		var apiErr apiError
+		if json.Unmarshal(bodyBytes, &apiErr) == nil && apiErr.Error != "" {
+			return fmt.Errorf("server error (%d): %s", resp.StatusCode, apiErr.Error)
+		}
+		return fmt.Errorf("server error (%d): %s", resp.StatusCode, string(bodyBytes))
+	}
+	return nil
 }
 
 func (c *Client) post(ctx context.Context, path string, body any, result any) error {

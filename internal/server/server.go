@@ -44,6 +44,12 @@ func New(st *store.Store, addr string) *Server {
 
 		// Chart of accounts reference
 		r.Get("/chart", s.getChart)
+
+		// CoA code settings
+		r.Get("/settings", s.listSettings)
+		r.Get("/settings/{code}", s.getCodeSettings)
+		r.Put("/settings/{code}/{setting}", s.upsertSetting)
+		r.Delete("/settings/{code}/{setting}", s.deleteSetting)
 	})
 
 	return s

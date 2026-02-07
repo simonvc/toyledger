@@ -21,9 +21,10 @@ const (
 	modeJournalEntry
 	modeLearn
 	modeRatios
+	modeConfig
 )
 
-var tabModes = []mode{modeAccountList, modeTransactionList, modeBalanceSheet, modeRatios, modeLearn}
+var tabModes = []mode{modeAccountList, modeTransactionList, modeBalanceSheet, modeRatios, modeConfig, modeLearn}
 
 func tabLabel(m mode) string {
 	switch m {
@@ -35,6 +36,8 @@ func tabLabel(m mode) string {
 		return "Balance Sheet"
 	case modeRatios:
 		return "Ratios"
+	case modeConfig:
+		return "Config"
 	case modeLearn:
 		return "Learn"
 	default:
@@ -58,6 +61,7 @@ type App struct {
 	wizard        wizardModel
 	journalEntry  journalEntryModel
 	ratios        ratiosModel
+	config        configModel
 	learn         learnModel
 }
 
@@ -97,6 +101,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.journalEntry.width = msg.Width
 		a.ratios.width = msg.Width
 		a.ratios.height = msg.Height - 6
+		a.config.width = msg.Width
+		a.config.height = msg.Height - 6
 		a.learn.width = msg.Width
 		a.learn.height = msg.Height - 6
 		return a, nil
@@ -179,6 +185,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case jeRatiosLoadedMsg:
 		var cmd tea.Cmd
 		a.journalEntry, cmd = a.journalEntry.update(msg, a.client)
+		return a, cmd
+	case settingsLoadedMsg:
+		var cmd tea.Cmd
+		a.config, cmd = a.config.update(msg, a.client)
+		return a, cmd
+	case settingUpdatedMsg:
+		var cmd tea.Cmd
+		a.config, cmd = a.config.update(msg, a.client)
+		return a, cmd
+	case configFlashClearMsg:
+		var cmd tea.Cmd
+		a.config, cmd = a.config.update(msg, a.client)
 		return a, cmd
 	}
 
@@ -294,6 +312,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.balanceSheet, cmd = a.balanceSheet.update(msg)
 	case modeRatios:
 		a.ratios, cmd = a.ratios.update(msg)
+	case modeConfig:
+		a.config, cmd = a.config.update(msg, a.client)
 	case modeLearn:
 		a.learn, cmd = a.learn.update(msg, a.client)
 	}
@@ -310,6 +330,8 @@ func (a *App) refreshTab() tea.Cmd {
 		return a.balanceSheet.init(a.client)
 	case modeRatios:
 		return a.ratios.init(a.client)
+	case modeConfig:
+		return a.config.init(a.client)
 	}
 	return nil
 }
@@ -348,6 +370,8 @@ func (a *App) View() string {
 		content = a.journalEntry.view()
 	case modeRatios:
 		content = a.ratios.view()
+	case modeConfig:
+		content = a.config.view()
 	case modeLearn:
 		content = a.learn.view()
 	}
