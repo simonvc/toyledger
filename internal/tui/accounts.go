@@ -226,6 +226,7 @@ func (m *accountListModel) view() string {
 	catW++
 	normalW++
 	balW++
+	ccyW++
 
 	// NAME gets remaining terminal width (flexible column).
 	fixedW := 2 + idW + codeW + catW + normalW + balW + ccyW
@@ -238,7 +239,7 @@ func (m *accountListModel) view() string {
 	}
 
 	// Header
-	header := fmt.Sprintf("  %-*s%-*s%*s %-*s%-*s%*s%s", idW, "ID", nameW, "NAME", codeW, "CODE", catW, "CATEGORY", normalW, "NORMAL", balW, "BALANCE", "CCY")
+	header := fmt.Sprintf("  %-*s%-*s%*s %-*s%-*s%*s%-*s", idW, "ID", nameW, "NAME", codeW, "CODE", catW, "CATEGORY", normalW, "NORMAL", balW, "BALANCE", ccyW, "CCY")
 	b.WriteString(headerStyle.Render(header))
 	b.WriteString("\n")
 
@@ -265,7 +266,7 @@ func (m *accountListModel) view() string {
 		if bal, ok := m.balances[a.ID]; ok {
 			balStr = ledger.FormatAmount(bal.Balance, bal.Currency)
 		}
-		line := fmt.Sprintf("  %-*s%-*s%*d %-*s%-*s%*s%s", idW, a.ID, nameW, name, codeW, a.Code, catW, a.Category, normalW, normal, balW, balStr, a.Currency)
+		line := fmt.Sprintf("  %-*s%-*s%*d %-*s%-*s%*s%-*s", idW, a.ID, nameW, name, codeW, a.Code, catW, a.Category, normalW, normal, balW, balStr, ccyW, a.Currency)
 		if i == m.cursor {
 			b.WriteString(selectedStyle.Render("> " + line[2:]))
 		} else {
