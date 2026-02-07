@@ -56,12 +56,38 @@
             transition: opacity 0.3s;
         }
         #toast.show { opacity: 1; }
+        #watermark {
+            position: fixed;
+            bottom: 28px;
+            right: 16px;
+            text-align: right;
+            pointer-events: none;
+            z-index: 10;
+            opacity: 0.12;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        #wm-title {
+            font-size: 36px;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: 2px;
+        }
+        #wm-sub {
+            font-size: 20px;
+            font-style: italic;
+            color: #fff;
+            margin-top: 2px;
+        }
     </style>
 </head>
 <body>
     <div id="terminal-container"></div>
     <div id="toast"></div>
     <div id="help-hint"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> share ledger &nbsp; <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd> reset ledger</div>
+    <div id="watermark">
+        <div id="wm-title">P A V E B A N K</div>
+        <div id="wm-sub">an experiment by simon@pavebank.com</div>
+    </div>
 
     <script type="module">
         import { init, Terminal, FitAddon } from 'https://esm.sh/ghostty-web@latest';
