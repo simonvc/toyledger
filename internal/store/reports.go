@@ -54,25 +54,31 @@ func (s *Store) BalanceSheet(ctx context.Context) (*ledger.BalanceSheet, error) 
 			return nil, fmt.Errorf("scan balance sheet: %w", err)
 		}
 
+		// Skip wildcard-currency accounts (e.g. ~fx) — their balance is a
+		// meaningless sum across currencies. The positions view handles them.
+		if line.Currency == "*" {
+			continue
+		}
+
+		gelAmt := ledger.ToGEL(line.Balance, line.Currency)
 		switch ledger.Category(category) {
 		case ledger.CategoryAssets:
 			bs.Assets = append(bs.Assets, line)
-			bs.TotalAssets += line.Balance
+			bs.TotalAssets += gelAmt
 		case ledger.CategoryLiabilities:
 			bs.Liabilities = append(bs.Liabilities, line)
-			bs.TotalLiabilities += line.Balance
+			bs.TotalLiabilities += gelAmt
 		case ledger.CategoryEquity:
 			bs.Equity = append(bs.Equity, line)
-			bs.TotalEquity += line.Balance
+			bs.TotalEquity += gelAmt
 		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
-	// Assets = Liabilities + Equity (debits are positive for assets, credits are negative for liabilities/equity)
-	// In our system, asset balances are positive (net debits), liability/equity are negative (net credits)
-	// So balanced means: TotalAssets + TotalLiabilities + TotalEquity = 0
+	// Totals are in reporting currency (GEL). Check the accounting equation:
+	// Assets + Liabilities + Equity = 0 (liabilities/equity are credit-normal, stored negative)
 	bs.Balanced = (bs.TotalAssets + bs.TotalLiabilities + bs.TotalEquity) == 0
 
 	return bs, nil
