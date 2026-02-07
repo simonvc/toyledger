@@ -389,7 +389,7 @@ type codeHint struct {
 
 var codeHints = map[int]codeHint{
 	1060: {dir: "DEBIT_ONLY recommended — regulatory reserves should only receive funds."},
-	2020: {dir: "CREDIT_ONLY recommended — customer deposit accounts should only receive credits."},
+	2020: {dir: "BOTH — customers receive credits (deposits) and debits (spending/withdrawals)."},
 }
 
 // Category-level fallback hints, used when no code-specific hint exists.
