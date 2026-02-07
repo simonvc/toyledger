@@ -270,16 +270,16 @@ func (m *wizardModel) view() string {
 			if typed != "" && !strings.HasPrefix(codeStr, typed) {
 				continue
 			}
+			inRange := entry.Code >= low && entry.Code <= high
 			marker := "  "
-			if entry.Code >= low && entry.Code <= high {
-				marker = dimStyle.Render("▸ ")
+			if inRange {
+				marker = "▸ "
 			}
-			label := fmt.Sprintf("  %s%d  %-30s  %s", marker, entry.Code, entry.Name, entry.Description)
-			if entry.Code >= low && entry.Code <= high {
-				b.WriteString(fmt.Sprintf("  %s\n", label))
-			} else {
-				b.WriteString(dimStyle.Render(fmt.Sprintf("  %s\n", label)))
+			line := fmt.Sprintf("    %s%d  %-30s  %s", marker, entry.Code, entry.Name, entry.Description)
+			if !inRange {
+				line = dimStyle.Render(line)
 			}
+			b.WriteString(line + "\n")
 			shown++
 		}
 		if shown == 0 && typed != "" {
