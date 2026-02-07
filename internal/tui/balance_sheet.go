@@ -53,7 +53,21 @@ func (m *balanceSheetModel) view() string {
 	}
 
 	var b strings.Builder
-	w := 72
+	w := m.width
+	if w < 60 {
+		w = 80
+	}
+
+	// Flexible NAME column: total fixed = indent(4)+acctID(6)+gaps+native(12)+ccy(3)+gel(12)+" GEL"(4) = 46
+	nameW := w - 46
+	if nameW < 10 {
+		nameW = 10
+	}
+	if nameW > 40 {
+		nameW = 40
+	}
+	// Width of the label field in total rows so GEL amount aligns with line items
+	totalLabelW := nameW + 25
 
 	b.WriteString(titleStyle.Render(centerStr("BALANCE SHEET", w)))
 	b.WriteString("\n")
@@ -69,19 +83,19 @@ func (m *balanceSheetModel) view() string {
 		var totalGEL int64
 		for _, l := range lines {
 			name := l.AccountName
-			if len(name) > 20 {
-				name = name[:20] + ".."
+			if len(name) > nameW-2 {
+				name = name[:nameW-2] + ".."
 			}
 			nativeAmt := formatBalanceSheetAmt(l.Balance, l.Currency)
 			gelAmt := ledger.ToGEL(l.Balance, l.Currency)
 			totalGEL += gelAmt
 			gelStr := formatBalanceSheetAmt(gelAmt, ledger.ReportingCurrency)
-			b.WriteString(fmt.Sprintf("    %-6s %-22s %12s %-3s  %12s GEL\n",
-				l.AccountID, name, nativeAmt, l.Currency, gelStr))
+			b.WriteString(fmt.Sprintf("    %-6s %-*s %12s %-3s  %12s GEL\n",
+				l.AccountID, nameW, name, nativeAmt, l.Currency, gelStr))
 		}
 		b.WriteString(fmt.Sprintf("    %s\n", strings.Repeat("─", w-8)))
-		b.WriteString(fmt.Sprintf("    %-33s %12s GEL\n",
-			"Total "+title, formatBalanceSheetAmt(totalGEL, ledger.ReportingCurrency)))
+		b.WriteString(fmt.Sprintf("    %-*s %12s GEL\n",
+			totalLabelW, "Total "+title, formatBalanceSheetAmt(totalGEL, ledger.ReportingCurrency)))
 		b.WriteString("\n")
 		return totalGEL
 	}
@@ -91,8 +105,8 @@ func (m *balanceSheetModel) view() string {
 	totalEquityGEL := renderSection("Equity", m.bs.Equity)
 
 	b.WriteString(fmt.Sprintf("    %s\n", strings.Repeat("═", w-8)))
-	b.WriteString(fmt.Sprintf("    %-33s %12s GEL\n",
-		"Total L + E", formatBalanceSheetAmt(totalLiabGEL+totalEquityGEL, ledger.ReportingCurrency)))
+	b.WriteString(fmt.Sprintf("    %-*s %12s GEL\n",
+		totalLabelW, "Total L + E", formatBalanceSheetAmt(totalLiabGEL+totalEquityGEL, ledger.ReportingCurrency)))
 
 	b.WriteString("\n")
 	if m.bs.Balanced {

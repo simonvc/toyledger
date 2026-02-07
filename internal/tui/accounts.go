@@ -191,8 +191,18 @@ func (m *accountListModel) view() string {
 	b.WriteString(titleStyle.Render("Accounts"))
 	b.WriteString("\n")
 
+	// Calculate flexible NAME column width based on terminal width.
+	// Fixed columns: indent(2) + ID(12) + gaps(7) + CODE(6) + CATEGORY(15) + NORMAL(7) + BALANCE(18) + CCY(3) = 70
+	nameW := m.width - 70
+	if nameW < 10 {
+		nameW = 10
+	}
+	if nameW > 50 {
+		nameW = 50
+	}
+
 	// Header
-	header := fmt.Sprintf("  %-12s %-28s %6s %-15s %-7s %18s %s", "ID", "NAME", "CODE", "CATEGORY", "NORMAL", "BALANCE", "CCY")
+	header := fmt.Sprintf("  %-12s %-*s %6s %-15s %-7s %18s %s", "ID", nameW, "NAME", "CODE", "CATEGORY", "NORMAL", "BALANCE", "CCY")
 	b.WriteString(headerStyle.Render(header))
 	b.WriteString("\n")
 
@@ -210,8 +220,8 @@ func (m *accountListModel) view() string {
 	for i := start; i < len(m.accounts) && i < start+maxRows; i++ {
 		a := m.accounts[i]
 		name := a.Name
-		if len(name) > 26 {
-			name = name[:26] + ".."
+		if len(name) > nameW-2 {
+			name = name[:nameW-2] + ".."
 		}
 
 		normal := ledger.NormalBalance(a.Category)
@@ -219,7 +229,7 @@ func (m *accountListModel) view() string {
 		if bal, ok := m.balances[a.ID]; ok {
 			balStr = ledger.FormatAmount(bal.Balance, bal.Currency)
 		}
-		line := fmt.Sprintf("  %-12s %-28s %6d %-15s %-7s %18s %s", a.ID, name, a.Code, a.Category, normal, balStr, a.Currency)
+		line := fmt.Sprintf("  %-12s %-*s %6d %-15s %-7s %18s %s", a.ID, nameW, name, a.Code, a.Category, normal, balStr, a.Currency)
 		if i == m.cursor {
 			b.WriteString(selectedStyle.Render("> " + line[2:]))
 		} else {
