@@ -203,7 +203,7 @@ Accounts prefixed with `~` are internal/system accounts. They are auto-created o
 | 2099 | ~escrow | Escrow | Liabilities | USD | Funds held on behalf of third parties |
 | 3099 | ~capital | Capital | Equity | USD | Owner's capital contributions and withdrawals |
 | 4099 | ~interest | Interest Income | Revenue | USD | Interest earned on customer balances or loans |
-| 5090 | ~fees | Fees | Expenses | USD | Internal fee collection account |
+| 4090 | ~fees | Fee Income | Revenue | USD | Fee income from customer charges |
 | 5091 | ~writeoff | Write-offs | Expenses | USD | Bad debt write-offs, failed payments |
 
 ### The ~fx Account (Wildcard Currency)
@@ -419,7 +419,7 @@ Templates define reusable journal entry patterns. Each template has a name, desc
 | Pay Operating Expense | DR 5010, CR 1010 | Expense recorded, cash decreases |
 | Pay Salaries | DR 5030, CR 1010 | Salary expense recorded, cash decreases |
 | Collect Tax | DR 1010, CR 2098 | Cash increases, tax liability increases |
-| Charge Customer Fee | DR 2020, CR 5090 | Customer balance decreases, fee recorded |
+| Charge Customer Fee | DR 2020, CR 4090 | Customer balance decreases, fee revenue increases |
 | Write Off Bad Debt | DR 5091, CR 1020 | Write-off expense recorded, receivable removed |
 | Earn Interest | DR 1010, CR 4099 | Cash increases, interest revenue recorded |
 | FX Conversion (Bank) | DR 1097, CR 1010 / DR 1010, CR 1097 | Bank converts own cash between currencies via ~fx |

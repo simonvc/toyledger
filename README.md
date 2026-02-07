@@ -191,7 +191,7 @@ curl -X POST http://localhost:8888/api/v1/transactions \
 
 | ID | Name | Purpose |
 |----|------|---------|
-| `~fees` | Fees | Internal fee collection |
+| `~fees` | Fee Income | Fee income from customer charges |
 | `~suspense` | Suspense Account | Temporary holding for unclassified entries |
 | `~float` | Float Account | Cash in transit |
 | `~fx` | FX Conversion | Cross-currency transaction intermediary |
