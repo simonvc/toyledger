@@ -12,7 +12,7 @@ A double-entry accounting ledger backed by SQLite, with CLI, TUI, and HTTP serve
 - **IFRS Chart of Accounts** — Predefined account categories: Assets (1xxx), Liabilities (2xxx), Equity (3xxx), Revenue (4xxx), Expenses (5xxx)
 - **Multi-currency** — Amounts stored as integers in minor units (cents), per-currency balance within transactions
 - **System accounts** — Internal accounts prefixed with `~` (e.g., `~fees`, `~suspense`, `~float`, `~fx`) auto-created on first run
-- **Three interfaces** — HTTP server, CLI, and interactive TUI (Bubble Tea)
+- **Four interfaces** — HTTP server, CLI, interactive TUI (Bubble Tea), and browser-based web terminal (Ghostty WASM)
 - **Immutable transactions** — Once finalized, transaction entries cannot be modified (enforced by triggers)
 
 ## Quick Start
@@ -38,6 +38,10 @@ make build
 
 # Launch interactive TUI (starts embedded server automatically)
 ./miniledger tui
+
+# Or run in the browser via Ghostty WASM terminal
+./miniledger web
+# Open http://localhost:8833
 ```
 
 ## Architecture
@@ -50,6 +54,7 @@ internal/
   server/             HTTP API (chi router)
   client/             HTTP client for CLI/TUI to talk to server
   tui/                Bubble Tea terminal UI
+  web/                Browser terminal (Ghostty WASM + WebSocket + PTY)
 ```
 
 ### Data Flow
@@ -66,6 +71,7 @@ CLI/TUI → HTTP Client → HTTP Server (chi) → Store (SQLite)
 ```
 miniledger serve [--addr :8888] [--db ledger.db]     Start HTTP server
 miniledger tui [--server http://localhost:8888]       Launch TUI
+miniledger web [--port 8833] [--host localhost]       Launch TUI in browser
 miniledger account create --id --name --code [--currency USD]
 miniledger account list [--category assets]
 miniledger account get <id>
@@ -83,6 +89,18 @@ Entries use the compact format `account_id:amount:currency`:
 - Amount is in minor units (cents for USD)
 - Positive = debit, negative = credit
 - Example: `1010:+50000:USD` debits Cash $500.00
+
+## Web Mode
+
+Run the full TUI in your browser using the [Ghostty WASM](https://github.com/coder/ghostty-web) terminal emulator:
+
+```bash
+./miniledger web                          # http://localhost:8833
+./miniledger web --port 9000              # custom port
+./miniledger web --host 0.0.0.0           # listen on all interfaces
+```
+
+Each browser tab gets its own independent TUI session via a PTY subprocess connected over WebSocket.
 
 ## TUI
 
@@ -216,5 +234,6 @@ make build       # Build binary
 make test        # Run tests
 make run-server  # Build and start server
 make run-tui     # Build and start TUI
+make run-web     # Build and start web terminal
 make clean       # Remove binary and database
 ```

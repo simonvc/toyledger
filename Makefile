@@ -1,4 +1,4 @@
-.PHONY: build test run-server run-tui clean
+.PHONY: build test run-server run-tui run-web clean
 
 build:
 	go build -o miniledger .
@@ -11,6 +11,9 @@ run-server: build
 
 run-tui: build
 	./miniledger tui
+
+run-web: build
+	./miniledger web
 
 clean:
 	rm -f miniledger ledger.db

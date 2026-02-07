@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>miniledger</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body {
+            background: #1e1e1e;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        #terminal-container {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div id="terminal-container"></div>
+
+    <script type="module">
+        import { init, Terminal, FitAddon } from 'https://esm.sh/ghostty-web@latest';
+
+        await init();
+
+        const container = document.getElementById('terminal-container');
+
+        const term = new Terminal({
+            cursorBlink: true,
+            fontSize: 14,
+            fontFamily: 'Monaco, Menlo, "Courier New", monospace',
+            theme: {
+                background: '#1e1e1e',
+                foreground: '#d4d4d4',
+            },
+            scrollback: 10000,
+        });
+
+        const fitAddon = new FitAddon();
+        term.loadAddon(fitAddon);
+        term.open(container);
+        fitAddon.fit();
+
+        window.addEventListener('resize', () => fitAddon.fit());
+
+        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${location.host}/ws?cols=${term.cols}&rows=${term.rows}`;
+        const ws = new WebSocket(wsUrl);
+
+        ws.binaryType = 'arraybuffer';
+        ws.onopen = () => term.focus();
+
+        ws.onmessage = (e) => term.write(new Uint8Array(e.data));
+
+        ws.onclose = () => {
+            term.write('\r\n\x1b[90m[session ended]\x1b[0m\r\n');
+        };
+
+        term.onData((data) => {
+            if (ws.readyState === WebSocket.OPEN) ws.send(data);
+        });
+
+        term.onResize(({ cols, rows }) => {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+            }
+        });
+    </script>
+</body>
+</html>
