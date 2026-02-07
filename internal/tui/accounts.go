@@ -263,7 +263,9 @@ func (m *accountListModel) view() string {
 
 		normal := ledger.NormalBalance(a.Category)
 		balStr := ""
-		if bal, ok := m.balances[a.ID]; ok {
+		if a.Currency == "*" {
+			balStr = "MULTI"
+		} else if bal, ok := m.balances[a.ID]; ok {
 			balStr = ledger.FormatAmount(bal.Balance, bal.Currency)
 		}
 		line := fmt.Sprintf("  %-*s%-*s%*d %-*s%-*s%*s %-*s", idW, a.ID, nameW, name, codeW, a.Code, catW, a.Category, normalW, normal, balW, balStr, ccyW, a.Currency)
