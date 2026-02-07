@@ -191,9 +191,45 @@ func (m *accountListModel) view() string {
 	b.WriteString(titleStyle.Render("Accounts"))
 	b.WriteString("\n")
 
-	// Calculate flexible NAME column width based on terminal width.
-	// Fixed columns: indent(2) + ID(12) + gaps(7) + CODE(6) + CATEGORY(15) + NORMAL(7) + BALANCE(18) + CCY(3) = 70
-	nameW := m.width - 70
+	// Compute column widths from actual data (longest value + 1).
+	idW := len("ID")
+	codeW := len("CODE")
+	catW := len("CATEGORY")
+	normalW := len("NORMAL")
+	balW := len("BALANCE")
+	ccyW := len("CCY")
+	for _, a := range m.accounts {
+		if l := len(a.ID); l > idW {
+			idW = l
+		}
+		if l := len(fmt.Sprintf("%d", a.Code)); l > codeW {
+			codeW = l
+		}
+		if l := len(a.Category); l > catW {
+			catW = l
+		}
+		if l := len(ledger.NormalBalance(a.Category)); l > normalW {
+			normalW = l
+		}
+		if bal, ok := m.balances[a.ID]; ok {
+			if l := len(ledger.FormatAmount(bal.Balance, bal.Currency)); l > balW {
+				balW = l
+			}
+		}
+		if l := len(a.Currency); l > ccyW {
+			ccyW = l
+		}
+	}
+	// +1 for inter-column gap
+	idW++
+	codeW++
+	catW++
+	normalW++
+	balW++
+
+	// NAME gets remaining terminal width (flexible column).
+	fixedW := 2 + idW + codeW + catW + normalW + balW + ccyW
+	nameW := m.width - fixedW
 	if nameW < 10 {
 		nameW = 10
 	}
@@ -202,7 +238,7 @@ func (m *accountListModel) view() string {
 	}
 
 	// Header
-	header := fmt.Sprintf("  %-12s %-*s %6s %-15s %-7s %18s %s", "ID", nameW, "NAME", "CODE", "CATEGORY", "NORMAL", "BALANCE", "CCY")
+	header := fmt.Sprintf("  %-*s%-*s%*s %-*s%-*s%*s%s", idW, "ID", nameW, "NAME", codeW, "CODE", catW, "CATEGORY", normalW, "NORMAL", balW, "BALANCE", "CCY")
 	b.WriteString(headerStyle.Render(header))
 	b.WriteString("\n")
 
@@ -229,7 +265,7 @@ func (m *accountListModel) view() string {
 		if bal, ok := m.balances[a.ID]; ok {
 			balStr = ledger.FormatAmount(bal.Balance, bal.Currency)
 		}
-		line := fmt.Sprintf("  %-12s %-*s %6d %-15s %-7s %18s %s", a.ID, nameW, name, a.Code, a.Category, normal, balStr, a.Currency)
+		line := fmt.Sprintf("  %-*s%-*s%*d %-*s%-*s%*s%s", idW, a.ID, nameW, name, codeW, a.Code, catW, a.Category, normalW, normal, balW, balStr, a.Currency)
 		if i == m.cursor {
 			b.WriteString(selectedStyle.Render("> " + line[2:]))
 		} else {

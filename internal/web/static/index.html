@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>miniledger</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body {
@@ -28,10 +31,13 @@
 
         const container = document.getElementById('terminal-container');
 
+        // Wait for web font to load so cell metrics are correct.
+        await document.fonts.ready;
+
         const term = new Terminal({
             cursorBlink: true,
             fontSize: 14,
-            fontFamily: 'Monaco, Menlo, "Courier New", monospace',
+            fontFamily: '"JetBrains Mono", Monaco, Menlo, "Courier New", monospace',
             theme: {
                 background: '#1e1e1e',
                 foreground: '#d4d4d4',

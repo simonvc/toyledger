@@ -58,16 +58,52 @@ func (m *balanceSheetModel) view() string {
 		w = 80
 	}
 
-	// Flexible NAME column: total fixed = indent(4)+acctID(6)+gaps+native(12)+ccy(3)+gel(12)+" GEL"(4) = 46
-	nameW := w - 46
-	if nameW < 10 {
-		nameW = 10
+	// Compute column widths from actual data (longest value + 1).
+	acctW := len("ID")
+	nameW := len("Name")
+	nativeW := 1
+	ccyW := 3
+	gelW := 1
+	allLines := make([]ledger.BalanceSheetLine, 0, len(m.bs.Assets)+len(m.bs.Liabilities)+len(m.bs.Equity))
+	allLines = append(allLines, m.bs.Assets...)
+	allLines = append(allLines, m.bs.Liabilities...)
+	allLines = append(allLines, m.bs.Equity...)
+	for _, l := range allLines {
+		if l2 := len(l.AccountID); l2 > acctW {
+			acctW = l2
+		}
+		if l2 := len(l.AccountName); l2 > nameW {
+			nameW = l2
+		}
+		if l2 := len(formatBalanceSheetAmt(l.Balance, l.Currency)); l2 > nativeW {
+			nativeW = l2
+		}
+		if l2 := len(l.Currency); l2 > ccyW {
+			ccyW = l2
+		}
+		gelAmt := ledger.ToGEL(l.Balance, l.Currency)
+		if l2 := len(formatBalanceSheetAmt(gelAmt, ledger.ReportingCurrency)); l2 > gelW {
+			gelW = l2
+		}
+	}
+	// +1 for inter-column gap
+	acctW++
+	ccyW++
+	// Cap name to remaining terminal width
+	fixedW := 4 + acctW + nativeW + ccyW + gelW + 4 // indent(4) + cols + " GEL"(4)
+	maxNameW := w - fixedW
+	if maxNameW < 10 {
+		maxNameW = 10
+	}
+	if nameW > maxNameW {
+		nameW = maxNameW
 	}
 	if nameW > 40 {
 		nameW = 40
 	}
+	nameW++ // +1 gap after name
 	// Width of the label field in total rows so GEL amount aligns with line items
-	totalLabelW := nameW + 25
+	totalLabelW := acctW + nameW + nativeW + ccyW
 
 	b.WriteString(titleStyle.Render(centerStr("BALANCE SHEET", w)))
 	b.WriteString("\n")
@@ -90,12 +126,12 @@ func (m *balanceSheetModel) view() string {
 			gelAmt := ledger.ToGEL(l.Balance, l.Currency)
 			totalGEL += gelAmt
 			gelStr := formatBalanceSheetAmt(gelAmt, ledger.ReportingCurrency)
-			b.WriteString(fmt.Sprintf("    %-6s %-*s %12s %-3s  %12s GEL\n",
-				l.AccountID, nameW, name, nativeAmt, l.Currency, gelStr))
+			b.WriteString(fmt.Sprintf("    %-*s%-*s%*s %-*s%*s GEL\n",
+				acctW, l.AccountID, nameW, name, nativeW, nativeAmt, ccyW, l.Currency, gelW, gelStr))
 		}
-		b.WriteString(fmt.Sprintf("    %s\n", strings.Repeat("─", w-8)))
-		b.WriteString(fmt.Sprintf("    %-*s %12s GEL\n",
-			totalLabelW, "Total "+title, formatBalanceSheetAmt(totalGEL, ledger.ReportingCurrency)))
+		b.WriteString(fmt.Sprintf("    %s\n", strings.Repeat("─", totalLabelW+gelW+4)))
+		b.WriteString(fmt.Sprintf("    %-*s%*s GEL\n",
+			totalLabelW, "Total "+title, gelW, formatBalanceSheetAmt(totalGEL, ledger.ReportingCurrency)))
 		b.WriteString("\n")
 		return totalGEL
 	}
@@ -104,9 +140,9 @@ func (m *balanceSheetModel) view() string {
 	totalLiabGEL := renderSection("Liabilities", m.bs.Liabilities)
 	totalEquityGEL := renderSection("Equity", m.bs.Equity)
 
-	b.WriteString(fmt.Sprintf("    %s\n", strings.Repeat("═", w-8)))
-	b.WriteString(fmt.Sprintf("    %-*s %12s GEL\n",
-		totalLabelW, "Total L + E", formatBalanceSheetAmt(totalLiabGEL+totalEquityGEL, ledger.ReportingCurrency)))
+	b.WriteString(fmt.Sprintf("    %s\n", strings.Repeat("═", totalLabelW+gelW+4)))
+	b.WriteString(fmt.Sprintf("    %-*s%*s GEL\n",
+		totalLabelW, "Total L + E", gelW, formatBalanceSheetAmt(totalLiabGEL+totalEquityGEL, ledger.ReportingCurrency)))
 
 	b.WriteString("\n")
 	if m.bs.Balanced {
