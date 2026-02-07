@@ -77,11 +77,32 @@ func (s *Store) BalanceSheet(ctx context.Context) (*ledger.BalanceSheet, error) 
 		return nil, err
 	}
 
-	// Totals are in reporting currency (GEL). Check the accounting equation:
-	// Assets + Liabilities + Equity = 0 (liabilities/equity are credit-normal, stored negative)
-	bs.Balanced = (bs.TotalAssets + bs.TotalLiabilities + bs.TotalEquity) == 0
+	// Balanced check: for every currency, the sum of all entries must be zero.
+	// This is the fundamental double-entry invariant (enforced per-txn by trigger).
+	bs.Balanced, err = s.isBalancedPerCurrency(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	return bs, nil
+}
+
+// isBalancedPerCurrency returns true when, for every currency, the global sum
+// of all finalized entries is zero. This is the double-entry invariant.
+func (s *Store) isBalancedPerCurrency(ctx context.Context) (bool, error) {
+	var count int
+	err := s.reader.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM (
+			SELECT e.currency, SUM(e.amount) as bal
+			FROM entries e
+			JOIN transactions t ON t.id = e.transaction_id AND t.finalized = 1
+			GROUP BY e.currency
+			HAVING bal != 0
+		)`).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("balance check: %w", err)
+	}
+	return count == 0, nil
 }
 
 func (s *Store) RegulatoryRatios(ctx context.Context) (*ledger.RegulatoryRatios, error) {
