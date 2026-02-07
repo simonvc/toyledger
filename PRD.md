@@ -427,6 +427,64 @@ Templates define reusable journal entry patterns. Each template has a name, desc
 
 ---
 
+## Per-Code Constraints
+
+Beyond the universal rules (balancing, immutability, currency matching), the ledger supports optional constraints that can be enabled per chart-of-accounts code. All accounts sharing a code share the same constraint settings. Constraints are enforced at both the application layer and the database layer.
+
+### Block Inverted Balance
+
+When enabled for a code, this constraint prevents any transaction from pushing an account's balance to the "wrong" side of zero:
+
+- **Debit-normal accounts** (assets, expenses) — balance cannot go negative. A negative balance would mean the account holds more credits than debits, which is abnormal (e.g. cash going below zero = overdraft).
+- **Credit-normal accounts** (liabilities, equity, revenue) — balance cannot go positive. A positive balance would mean more debits than credits, which is abnormal (e.g. a customer deposit account flipping into receivable territory).
+
+The check is performed against the **projected** balance: the account's existing finalized balance plus all entries in the pending transaction. If the projected balance would invert, the transaction is rejected before finalization.
+
+#### When to use it
+
+| Category | Rationale |
+|----------|-----------|
+| Assets (1xxx) | Prevents overdraw — an asset account going negative means the entity has less than nothing |
+| Liabilities (2xxx) | Prevents liability accounts from flipping to a debit balance, which would imply customers owe the bank when the bank should owe them |
+| Equity (3xxx) | Prevents equity erosion below zero — protects against technical insolvency |
+| Revenue (4xxx) | Prevents revenue from reversing past zero, which would create a phantom expense |
+| Expenses (5xxx) | Prevents expense accounts from going negative, which would imply unrecorded income |
+
+### Entry Direction
+
+Controls which entry directions (debit or credit) are allowed for accounts at a given code. Three modes:
+
+| Mode | Positive (Debit) | Negative (Credit) | Use case |
+|------|:-:|:-:|----------|
+| **BOTH** (default) | Allowed | Allowed | Most accounts — normal operations include both increases and decreases |
+| **DEBIT_ONLY** | Allowed | Rejected | Accounts that should only receive, never disburse (e.g. regulatory reserves at 1060, expense accounts) |
+| **CREDIT_ONLY** | Rejected | Allowed | Accounts that should only accumulate on the credit side (e.g. customer deposit accounts at 2020, revenue accounts) |
+
+Each entry is checked individually before insertion. If a credit entry is posted to a DEBIT_ONLY code (or vice versa), the transaction is rejected immediately.
+
+#### Interaction with Block Inverted Balance
+
+When both constraints are active, certain direction modes become contradictory:
+
+- A **debit-normal** account with Block Inverted cannot be set to **CREDIT_ONLY** — that would only allow credits, guaranteeing the balance goes negative.
+- A **credit-normal** account with Block Inverted cannot be set to **DEBIT_ONLY** — that would only allow debits, guaranteeing the balance goes positive.
+
+The system automatically corrects these invalid combinations: enabling Block Inverted on a code with a contradictory direction will reset the direction to the safe default (DEBIT_ONLY for debit-normal, CREDIT_ONLY for credit-normal).
+
+### Suggested Configurations
+
+| Code | Name | Suggested | Rationale |
+|------|------|-----------|-----------|
+| 1060 | Restricted Cash | Block Inverted + DEBIT_ONLY | Regulatory reserves should only receive funds and never go negative |
+| 2020 | Customer Accounts | Block Inverted + CREDIT_ONLY | Customer deposits should only accumulate and never flip to debit |
+| 4xxx | Revenue codes | Block Inverted + CREDIT_ONLY | Revenue should only be recognized (credited), not directly debited |
+| 5xxx | Expense codes | Block Inverted + DEBIT_ONLY | Expenses should only be incurred (debited), not directly credited |
+| 3xxx | Equity codes | Block Inverted + BOTH | Equity accepts both contributions and distributions but should not go negative |
+
+Constraints are optional. By default, all codes have Block Inverted off and Entry Direction set to BOTH, preserving the ledger's traditional flexibility. Constraints are most valuable for operational accounts where accidental sign errors could have regulatory or customer-facing consequences.
+
+---
+
 ## Account Deletion Constraints
 
 An account can only be deleted if it has **zero entries**. This prevents orphaning historical transaction data. The check is:
