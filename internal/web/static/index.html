@@ -157,6 +157,15 @@
             }
         }, true);
 
+        // Prevent browser from stealing Shift+Tab for focus navigation.
+        // Ghostty will still receive the key event and generate the
+        // correct escape sequence (\x1b[Z) for the TUI.
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Tab' && e.shiftKey) {
+                e.preventDefault();
+            }
+        }, true);
+
         function connect() {
             const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${location.host}/ws?cols=${term.cols}&rows=${term.rows}`;
