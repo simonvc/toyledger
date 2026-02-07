@@ -21,10 +21,11 @@ const (
 	modeJournalEntry
 	modeLearn
 	modeRatios
+	modeOTCFX
 	modeConfig
 )
 
-var tabModes = []mode{modeAccountList, modeTransactionList, modeBalanceSheet, modeRatios, modeConfig, modeLearn}
+var tabModes = []mode{modeAccountList, modeTransactionList, modeBalanceSheet, modeRatios, modeOTCFX, modeConfig, modeLearn}
 
 func tabLabel(m mode) string {
 	switch m {
@@ -36,6 +37,8 @@ func tabLabel(m mode) string {
 		return "Balance Sheet"
 	case modeRatios:
 		return "Ratios"
+	case modeOTCFX:
+		return "OTC FX"
 	case modeConfig:
 		return "Config"
 	case modeLearn:
@@ -61,6 +64,7 @@ type App struct {
 	wizard        wizardModel
 	journalEntry  journalEntryModel
 	ratios        ratiosModel
+	otcFX         otcFXModel
 	config        configModel
 	learn         learnModel
 }
@@ -70,6 +74,7 @@ func NewApp(c *client.Client) *App {
 		client:   c,
 		mode:     modeAccountList,
 		tabIndex: 0,
+		otcFX:    newOTCFX(),
 	}
 	app.learn.init()
 	return app
@@ -81,6 +86,7 @@ func (a *App) Init() tea.Cmd {
 		a.txnList.init(a.client),
 		a.balanceSheet.init(a.client),
 		a.ratios.init(a.client),
+		a.otcFX.init(a.client),
 	)
 }
 
@@ -101,6 +107,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.journalEntry.width = msg.Width
 		a.ratios.width = msg.Width
 		a.ratios.height = msg.Height - 6
+		a.otcFX.width = msg.Width
+		a.otcFX.height = msg.Height - 6
 		a.config.width = msg.Width
 		a.config.height = msg.Height - 6
 		a.learn.width = msg.Width
@@ -166,6 +174,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.accountList.init(a.client),
 			a.balanceSheet.init(a.client),
 		)
+	case otcFXLoadedMsg:
+		var cmd tea.Cmd
+		a.otcFX, cmd = a.otcFX.update(msg, a.client)
+		return a, cmd
+	case otcFXTxnCreatedMsg:
+		var cmd tea.Cmd
+		a.otcFX, cmd = a.otcFX.update(msg, a.client)
+		return a, cmd
 	case ratiosLoadedMsg:
 		var cmd tea.Cmd
 		a.ratios, cmd = a.ratios.update(msg)
@@ -227,6 +243,22 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.journalEntry.cancelled {
 			a.mode = modeTransactionList
 			a.statusMsg = "Transaction cancelled"
+		}
+		return a, cmd
+	}
+
+	if a.mode == modeOTCFX && a.otcFX.step > fxStepLanding {
+		var cmd tea.Cmd
+		a.otcFX, cmd = a.otcFX.update(msg, a.client)
+		if a.otcFX.done {
+			a.mode = modeTransactionList
+			a.statusMsg = a.otcFX.statusMsg
+			a.otcFX = newOTCFX()
+			return a, tea.Batch(a.txnList.init(a.client), a.otcFX.init(a.client))
+		}
+		if a.otcFX.cancelled {
+			a.otcFX = newOTCFX()
+			return a, a.otcFX.init(a.client)
 		}
 		return a, cmd
 	}
@@ -312,6 +344,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.balanceSheet, cmd = a.balanceSheet.update(msg)
 	case modeRatios:
 		a.ratios, cmd = a.ratios.update(msg)
+	case modeOTCFX:
+		a.otcFX, cmd = a.otcFX.update(msg, a.client)
 	case modeConfig:
 		a.config, cmd = a.config.update(msg, a.client)
 	case modeLearn:
@@ -330,6 +364,8 @@ func (a *App) refreshTab() tea.Cmd {
 		return a.balanceSheet.init(a.client)
 	case modeRatios:
 		return a.ratios.init(a.client)
+	case modeOTCFX:
+		return a.otcFX.init(a.client)
 	case modeConfig:
 		return a.config.init(a.client)
 	}
@@ -370,6 +406,8 @@ func (a *App) View() string {
 		content = a.journalEntry.view()
 	case modeRatios:
 		content = a.ratios.view()
+	case modeOTCFX:
+		content = a.otcFX.view()
 	case modeConfig:
 		content = a.config.view()
 	case modeLearn:
@@ -385,7 +423,7 @@ func (a *App) View() string {
 		status = errorStyle.Render(a.err.Error())
 	}
 
-	helpText := dimStyle.Render("tab:switch  enter:select  esc:back  n:new  d:delete  r:rename  t:new txn  q:quit")
+	helpText := dimStyle.Render("tab:switch  enter:select  esc:back  n:new  d:delete  r:rename  t:new txn  f:fx deal  q:quit")
 
 	return lipgloss.JoinVertical(lipgloss.Left,
 		tabs,

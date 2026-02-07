@@ -154,6 +154,17 @@ func (m *accountDetailModel) view() string {
 			b.WriteString(fmt.Sprintf("  %-24s %14s", label, gelStr))
 		}
 		b.WriteString("\n")
+
+		// Callout explaining ~fx sign convention
+		if m.account.ID == "~fx" {
+			b.WriteString("\n")
+			callout := "The ~fx book is the accounting mirror of the bank's\n" +
+				"economic FX position. A negative PnL here means the\n" +
+				"bank PROFITED by that amount — the ~fx account 'lost'\n" +
+				"value that transferred to the bank's real exposure."
+			b.WriteString(boxStyle.Render(dimStyle.Render(callout)))
+			b.WriteString("\n")
+		}
 	}
 
 	b.WriteString("\n" + dimStyle.Render("  Press ESC to go back"))
