@@ -329,7 +329,7 @@ If the bank charges a spread (e.g. giving 840 EUR instead of 850), the net GEL p
 There are two FX templates:
 
 **FX Conversion (Bank)** — the bank converts its own cash holdings:
-- Source/dest accounts are cash accounts (code 1010)
+- Source/dest accounts are nostro accounts (code 1010)
 - Used for treasury operations
 
 **Customer FX Swap** — a customer swaps currencies:
@@ -349,9 +349,9 @@ All amounts in the `entries` table use a single signed integer:
 | **Credit** | Negative amount (-) | Decreases balance | Increases balance |
 
 Examples:
-- Customer deposits 1,000 USD → DR Cash +100,000, CR Customer -100,000
+- Customer deposits 1,000 USD → DR Nostro +100,000, CR Customer -100,000
 - Customer liability (code 2020) is credit-normal, so -100,000 means the balance **increases** (we owe them more)
-- Cash (code 1010) is debit-normal, so +100,000 means the balance **increases** (we have more cash)
+- Nostro (code 1010) is debit-normal, so +100,000 means the balance **increases** (we hold more cash at the correspondent)
 
 ---
 
@@ -502,18 +502,18 @@ Templates define reusable journal entry patterns. Each template has a name, desc
 | Template | Entries | Description |
 |----------|---------|-------------|
 | Capital Injection | DR 1060, CR 3099 | Regulatory reserves increase, capital equity increases |
-| Customer Deposit | DR 1010, CR 2020 | Cash (nostro) increases, customer liability increases |
-| Customer Withdrawal | DR 2020, CR 1010 | Customer liability decreases, cash decreases |
+| Customer Deposit | DR 1010, CR 2020 | Nostro increases, customer liability increases |
+| Customer Withdrawal | DR 2020, CR 1010 | Customer liability decreases, nostro decreases |
 | Record Service Revenue | DR 1020, CR 4010 | Receivable increases, revenue recorded |
-| Receive Payment | DR 1010, CR 1020 | Cash increases, receivable settled |
-| Pay Supplier | DR 2010, CR 1010 | Payable settled, cash decreases |
-| Pay Operating Expense | DR 5010, CR 1010 | Expense recorded, cash decreases |
-| Pay Salaries | DR 5030, CR 1010 | Salary expense recorded, cash decreases |
-| Collect Tax | DR 1010, CR 2098 | Cash increases, tax liability increases |
+| Receive Payment | DR 1010, CR 1020 | Nostro increases, receivable settled |
+| Pay Supplier | DR 2010, CR 1010 | Vostro settled, nostro decreases |
+| Pay Operating Expense | DR 5010, CR 1010 | Expense recorded, nostro decreases |
+| Pay Salaries | DR 5030, CR 1010 | Salary expense recorded, nostro decreases |
+| Collect Tax | DR 1010, CR 2098 | Nostro increases, tax liability increases |
 | Charge Customer Fee | DR 2020, CR 4090 | Customer balance decreases, fee revenue increases |
 | Write Off Bad Debt | DR 5091, CR 1020 | Write-off expense recorded, receivable removed |
-| Earn Interest | DR 1010, CR 4099 | Cash increases, interest revenue recorded |
-| FX Conversion (Bank) | DR 1097, CR 1010 / DR 1010, CR 1097 | Bank converts own cash between currencies via ~fx |
+| Earn Interest | DR 1010, CR 4099 | Nostro increases, interest revenue recorded |
+| FX Conversion (Bank) | DR 1097, CR 1010 / DR 1010, CR 1097 | Bank converts own nostro holdings between currencies via ~fx |
 | Customer FX Swap | DR 2020, CR 1097 / DR 1097, CR 2020 | Customer swaps currencies via ~fx |
 
 ---
