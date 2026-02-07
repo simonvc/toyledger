@@ -23,9 +23,9 @@ type Template struct {
 var Templates = []Template{
 	{
 		Name:        "Capital Injection",
-		Description: "Owner puts money into the business. The receiving asset increases (debit), Capital equity increases (credit).",
+		Description: "Owner puts money into the business. Regulatory reserves at the central bank increase (debit), Capital equity increases (credit).",
 		Entries: []TemplateEntry{
-			{CoACode: 1010, Role: "Receiving account (e.g. Cash, Reserves)", IsDebit: true},
+			{CoACode: 1060, Role: "Reserves account (e.g. NBG Reserves)", IsDebit: true},
 			{CoACode: 3099, Role: "Capital account", IsDebit: false},
 		},
 	},
@@ -118,13 +118,23 @@ var Templates = []Template{
 		},
 	},
 	{
-		Name:        "FX Conversion",
-		Description: "Convert between currencies via the ~fx intermediary. Source currency debits ~fx and credits the source account; destination currency debits the destination account and credits ~fx. Each currency balances independently.",
+		Name:        "FX Conversion (Bank)",
+		Description: "Convert the bank's own funds between currencies via ~fx. Source currency debits ~fx and credits the cash account; destination currency debits cash and credits ~fx. Each currency balances independently.",
 		Entries: []TemplateEntry{
 			{CoACode: 1097, Role: "FX intermediary (source)", IsDebit: true, Group: 0},
-			{CoACode: 1010, Role: "Source currency account", IsDebit: false, Group: 0},
-			{CoACode: 1010, Role: "Destination currency account", IsDebit: true, Group: 1},
+			{CoACode: 1010, Role: "Source cash account", IsDebit: false, Group: 0},
+			{CoACode: 1010, Role: "Destination cash account", IsDebit: true, Group: 1},
 			{CoACode: 1097, Role: "FX intermediary (dest)", IsDebit: false, Group: 1},
+		},
+	},
+	{
+		Name:        "Customer FX Swap",
+		Description: "Customer swaps one currency for another. Source currency: customer liability decreases (debit), ~fx receives (credit). Destination currency: ~fx pays out (debit), customer liability increases (credit).",
+		Entries: []TemplateEntry{
+			{CoACode: 2020, Role: "Customer source currency account", IsDebit: true, Group: 0},
+			{CoACode: 1097, Role: "FX intermediary (source)", IsDebit: false, Group: 0},
+			{CoACode: 1097, Role: "FX intermediary (dest)", IsDebit: true, Group: 1},
+			{CoACode: 2020, Role: "Customer dest currency account", IsDebit: false, Group: 1},
 		},
 	},
 }
