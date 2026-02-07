@@ -82,6 +82,7 @@ func NewApp(c *client.Client) *App {
 		client:   c,
 		mode:     modeAbout,
 		tabIndex: 0,
+		about:    newAboutModel(),
 		otcFX:    newOTCFX(),
 	}
 	app.learn.init()

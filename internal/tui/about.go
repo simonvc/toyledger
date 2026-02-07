@@ -2,11 +2,14 @@ package tui
 
 import (
 	"fmt"
+	"math/rand"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+var aboutUsers = []string{"Michael Bolton", "Samir Nagheenanajar", "Peter Gibbons"}
 
 type aboutPage int
 
@@ -38,6 +41,11 @@ type aboutModel struct {
 	page   aboutPage
 	width  int
 	height int
+	user   string
+}
+
+func newAboutModel() aboutModel {
+	return aboutModel{user: aboutUsers[rand.Intn(len(aboutUsers))]}
 }
 
 func (m aboutModel) update(msg tea.Msg) (aboutModel, tea.Cmd) {
@@ -185,7 +193,7 @@ func (m *aboutModel) viewMenu() string {
 
 	// Status bar (full width, not centered)
 	left := " [1-7] Select "
-	right := " User: guest "
+	right := " User: " + m.user + " "
 	gap := m.width - len(left) - len(right)
 	if gap < 2 {
 		gap = 2
