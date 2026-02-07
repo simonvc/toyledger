@@ -290,8 +290,8 @@ func (m *configModel) view() string {
 	b.WriteString(headerStyle.Render(header))
 	b.WriteString("\n")
 
-	// Budget: title(1) + subtitle(1) + blank(1) + header(1) + footer(2) + callout(~10) = 16 fixed lines
-	maxRows := m.height - 17
+	// Budget: title+margin(2) + subtitle(1) + blank(1) + header(1) + footer(2) + callout gap+box(~12) = 19 fixed lines
+	maxRows := m.height - 19
 	if maxRows < 5 {
 		maxRows = 5
 	}
