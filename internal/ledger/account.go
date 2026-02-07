@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -88,6 +89,27 @@ func CategoryLabel(cat Category) string {
 	}
 }
 
+var (
+	nostroPattern = regexp.MustCompile(`^<[a-zA-Z0-9_-]+:[a-zA-Z]{3}>$`)
+	vostroPattern = regexp.MustCompile(`^>[a-zA-Z0-9_-]+:[a-zA-Z]{3}<$`)
+)
+
+// ValidateCorrespondentID checks that accounts at codes 1010 (nostro) and
+// 2010 (vostro) follow the directional arrow naming convention.
+func ValidateCorrespondentID(code int, id string) error {
+	switch code {
+	case 1010:
+		if !nostroPattern.MatchString(id) {
+			return fmt.Errorf("%w: nostro accounts (1010) must use <bank:ccy> format, e.g. <jpmorgan:usd>", ErrInvalidCorrespondentID)
+		}
+	case 2010:
+		if !vostroPattern.MatchString(id) {
+			return fmt.Errorf("%w: vostro accounts (2010) must use >bank:ccy< format, e.g. >jpmorgan:usd<", ErrInvalidCorrespondentID)
+		}
+	}
+	return nil
+}
+
 // Validate checks all account invariants.
 func (a *Account) Validate() error {
 	if a.ID == "" {
@@ -121,6 +143,10 @@ func (a *Account) Validate() error {
 	}
 	if a.Category != expectedCat {
 		return fmt.Errorf("%w: code %d should be %s, got %s", ErrCodeCategoryMismatch, a.Code, expectedCat, a.Category)
+	}
+
+	if err := ValidateCorrespondentID(a.Code, a.ID); err != nil {
+		return err
 	}
 
 	if a.Currency != "*" && !ValidCurrency(a.Currency) {

@@ -13,7 +13,7 @@ type ChartEntry struct {
 // PredefinedAccounts is the minimal IFRS chart of accounts.
 var PredefinedAccounts = []ChartEntry{
 	// Assets (1xxx)
-	{Code: 1010, ID: "1010", Name: "Cash and Cash Equivalents", Category: CategoryAssets, Description: "Cash on hand and in bank accounts"},
+	{Code: 1010, ID: "1010", Name: "Nostro Accounts", Category: CategoryAssets, Description: "Our accounts at correspondent banks — use <bank:ccy> naming"},
 	{Code: 1020, ID: "1020", Name: "Accounts Receivable", Category: CategoryAssets, Description: "Amounts owed to the entity by customers"},
 	{Code: 1030, ID: "1030", Name: "Inventory", Category: CategoryAssets, Description: "Goods held for sale"},
 	{Code: 1040, ID: "1040", Name: "Prepaid Expenses", Category: CategoryAssets, Description: "Payments made in advance for future expenses"},
@@ -21,7 +21,7 @@ var PredefinedAccounts = []ChartEntry{
 	{Code: 1060, ID: "1060", Name: "Restricted Cash / Regulatory Reserves", Category: CategoryAssets, Description: "Cash held at regulators or under restrictions"},
 
 	// Liabilities (2xxx)
-	{Code: 2010, ID: "2010", Name: "Accounts Payable", Category: CategoryLiabilities, Description: "Amounts owed to suppliers"},
+	{Code: 2010, ID: "2010", Name: "Vostro Accounts", Category: CategoryLiabilities, Description: "Correspondent bank accounts at us — use >bank:ccy< naming"},
 	{Code: 2020, ID: "2020", Name: "Customer Accounts", Category: CategoryLiabilities, Description: "Customer deposit and balance accounts"},
 	{Code: 2030, ID: "2030", Name: "Accrued Expenses", Category: CategoryLiabilities, Description: "Expenses incurred but not yet paid"},
 	{Code: 2040, ID: "2040", Name: "Loans Payable", Category: CategoryLiabilities, Description: "Outstanding loan obligations"},

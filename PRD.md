@@ -164,13 +164,13 @@ Account codes follow IFRS conventions using 4-digit codes. The first digit deter
 
 | Code | Name | Category | Description |
 |------|------|----------|-------------|
-| 1010 | Cash and Cash Equivalents | Assets | Cash on hand and in bank accounts |
+| 1010 | Nostro Accounts | Assets | Our accounts at correspondent banks — ID format: `<bank:ccy>` |
 | 1020 | Accounts Receivable | Assets | Amounts owed to the entity by customers |
 | 1030 | Inventory | Assets | Goods held for sale |
 | 1040 | Prepaid Expenses | Assets | Payments made in advance for future expenses |
 | 1050 | Property, Plant & Equipment | Assets | Long-term tangible assets |
 | 1060 | Restricted Cash / Regulatory Reserves | Assets | Cash held at regulators or under restrictions |
-| 2010 | Accounts Payable | Liabilities | Amounts owed to suppliers |
+| 2010 | Vostro Accounts | Liabilities | Correspondent bank accounts at us — ID format: `>bank:ccy<` |
 | 2020 | Customer Accounts | Liabilities | Customer deposit and balance accounts |
 | 2030 | Accrued Expenses | Liabilities | Expenses incurred but not yet paid |
 | 2040 | Loans Payable | Liabilities | Outstanding loan obligations |
@@ -211,6 +211,45 @@ Accounts prefixed with `~` are internal/system accounts. They are auto-created o
 The `~fx` account is unique: its currency is `*`, meaning the `trg_entry_currency_match` trigger allows entries in **any** currency. This is essential for FX transactions where a single intermediary account must hold positions in multiple currencies simultaneously.
 
 No other account uses `*`. All regular and other system accounts are denominated in a single currency.
+
+---
+
+## Correspondent Banking Conventions
+
+Accounts at IFRS codes 1010 (Nostro) and 2010 (Vostro) use a directional arrow naming convention that encodes the correspondent bank and currency in the account ID:
+
+### Nostro — `<bank:currency>` (code 1010)
+
+Nostro accounts represent **our money held at another bank**. The angle brackets `< >` point outward, indicating money flows **out** of our bank to the correspondent.
+
+- ID format: `<bankname:currency>`
+- Example: `<jpmorgan:usd>`, `<deutschebank:eur>`
+- Category: Assets (we own these funds)
+- Each nostro account is denominated in a single currency
+
+### Vostro — `>bank:currency<` (code 2010)
+
+Vostro accounts represent **another bank's money held at our bank**. The angle brackets `> <` point inward, indicating money flows **in** to our bank from the correspondent.
+
+- ID format: `>bankname:currency<`
+- Example: `>jpmorgan:usd<`, `>deutschebank:eur<`
+- Category: Liabilities (we owe these funds to the correspondent)
+- Each vostro account is denominated in a single currency
+
+### Naming Rules
+
+- Bank name: lowercase alphanumeric, hyphens, and underscores allowed
+- Currency: 3-letter currency code (lowercase in the ID)
+- The naming convention is **enforced by validation** — accounts at codes 1010 and 2010 must follow this format
+
+### Relationship
+
+A nostro and vostro are two sides of the same correspondent relationship. If Pave Bank holds a USD account at JPMorgan, then:
+
+| Pave Bank's view | JPMorgan's view |
+|---|---|
+| `<jpmorgan:usd>` (nostro, asset) | This is their vostro |
+| `>jpmorgan:usd<` (vostro, liability) | This is their nostro |
 
 ---
 

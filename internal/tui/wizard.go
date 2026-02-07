@@ -141,7 +141,16 @@ func (m wizardModel) updateCode(msg tea.KeyMsg, c *client.Client) (wizardModel, 
 		}
 		m.err = nil
 		m.step = stepID
-		m.id.SetValue(strconv.Itoa(code))
+		switch code {
+		case 1010:
+			m.id.SetValue("")
+			m.id.Placeholder = "<bank:ccy> e.g. <jpmorgan:usd>"
+		case 2010:
+			m.id.SetValue("")
+			m.id.Placeholder = ">bank:ccy< e.g. >jpmorgan:usd<"
+		default:
+			m.id.SetValue(strconv.Itoa(code))
+		}
 		m.id.Focus()
 		return m, nil
 	}
@@ -281,7 +290,26 @@ func (m *wizardModel) view() string {
 		b.WriteString(fmt.Sprintf("  Code: %s\n", m.code.Value()))
 		b.WriteString("  Enter account ID:\n\n")
 		b.WriteString("  " + m.id.View() + "\n")
-		b.WriteString("\n" + dimStyle.Render("  Use ~ prefix for system/internal accounts") + "\n")
+
+		code, _ := strconv.Atoi(m.code.Value())
+		switch code {
+		case 1010:
+			b.WriteString("\n" + hintBoxStyle.Render(
+				"NOSTRO (1010): Use <bank:currency> format\n"+
+					"Example: <jpmorgan:usd>\n\n"+
+					"The < > arrows represent money flowing\n"+
+					"OUT of the bank to the correspondent.",
+			) + "\n")
+		case 2010:
+			b.WriteString("\n" + hintBoxStyle.Render(
+				"VOSTRO (2010): Use >bank:currency< format\n"+
+					"Example: >jpmorgan:usd<\n\n"+
+					"The > < arrows represent money flowing\n"+
+					"IN to the bank from the correspondent.",
+			) + "\n")
+		default:
+			b.WriteString("\n" + dimStyle.Render("  Use ~ prefix for system/internal accounts") + "\n")
+		}
 
 	case stepName:
 		b.WriteString(fmt.Sprintf("  Code: %s | ID: %s\n", m.code.Value(), m.id.Value()))

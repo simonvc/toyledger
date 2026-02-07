@@ -19,4 +19,5 @@ var (
 	ErrDuplicateAccount        = errors.New("account already exists")
 	ErrInvertedBalance         = errors.New("transaction would create inverted balance")
 	ErrEntryDirectionViolation = errors.New("entry violates direction constraint")
+	ErrInvalidCorrespondentID  = errors.New("invalid correspondent account ID")
 )
