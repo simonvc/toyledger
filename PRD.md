@@ -397,6 +397,58 @@ Before posting any transaction, the system projects how the proposed entries wou
 
 ---
 
+## Open Currency Position (OCP)
+
+The Open Currency Position report shows the bank's net foreign exchange exposure per currency. It answers: "for each currency, how much do we hold in real accounts versus how much do we owe?"
+
+### Calculation
+
+For each currency, aggregate balances from all accounts denominated in that currency:
+
+- **Assets (Long)**: sum of balances from asset-category accounts (debit-normal, positive = bank holds)
+- **Liabilities (Short)**: absolute sum of balances from liability-category accounts (credit-normal, negate for display)
+- **Equity**: absolute sum of balances from equity-category accounts (credit-normal, negate for display)
+- **Net Position**: raw sum of all account balances in that currency (assets + liabilities + equity in their signed form)
+- **GEL Equivalent**: `ToGEL(Net, Currency)` — net position converted to reporting currency
+
+The **Total Open Position** is the sum of all per-currency GEL equivalents.
+
+### Excluding ~fx
+
+The `~fx` account (currency `*`) is **excluded** from OCP. It is a booking intermediary that records FX conversions, not a real cash holding. Including it would double-count: when a customer FX swap is booked, `~fx` receives entries that exactly mirror the customer liability, making the net appear zero even when the bank has genuine currency risk.
+
+The `~fx` account's own per-currency position (viewable on its account detail page) shows the bank's **FX dealing book** — the accumulated conversions the bank has facilitated. This is a complementary view but distinct from OCP.
+
+### Interpreting OCP
+
+| Net Position | Meaning | Risk |
+|---|---|---|
+| Positive (long) | Bank holds more assets than liabilities in this currency | If the currency depreciates, the bank loses value |
+| Negative (short) | Bank owes more than it holds in this currency | The bank must acquire this currency to meet obligations; if the currency appreciates, costs increase |
+| Zero | Matched book — assets equal liabilities | No FX risk in this currency |
+
+### Example
+
+Given these accounts:
+
+| Account | Category | Currency | Balance |
+|---------|----------|----------|---------|
+| ~suspense | Assets | USD | +1,000.00 |
+| acc_1 | Liabilities | USD | -455.56 |
+| acc_2 | Liabilities | EUR | -491.30 |
+
+The OCP is:
+
+| CCY | Assets | Liabilities | Net | GEL Equiv |
+|-----|--------|-------------|-----|-----------|
+| EUR | 0.00 | 491.30 | -491.30 | -1,449.34 |
+| USD | 1,000.00 | 455.56 | +544.44 | +1,470.00 |
+| **Total** | | | | **+20.66 GEL** |
+
+The bank is **short EUR** (owes EUR it doesn't hold) and **long USD** (holds more USD than it owes). The total GEL exposure is slightly positive, meaning the bank's FX risk is roughly balanced in aggregate but exposed to EUR/USD relative movements.
+
+---
+
 ## Transaction Templates
 
 Templates define reusable journal entry patterns. Each template has a name, description, and a list of entry slots with:
