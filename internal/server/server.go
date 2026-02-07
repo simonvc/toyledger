@@ -2,6 +2,7 @@ package server
 
 import (
 	"log"
+	"net"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -17,7 +18,6 @@ type Server struct {
 
 func New(st *store.Store, addr string) *Server {
 	r := chi.NewRouter()
-	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
 	s := &Server{store: st, router: r, addr: addr}
@@ -52,6 +52,11 @@ func New(st *store.Store, addr string) *Server {
 func (s *Server) ListenAndServe() error {
 	log.Printf("miniledger server listening on %s", s.addr)
 	return http.ListenAndServe(s.addr, s.router)
+}
+
+func (s *Server) Serve(ln net.Listener) error {
+	log.Printf("miniledger server listening on %s", ln.Addr())
+	return http.Serve(ln, s.router)
 }
 
 func (s *Server) Handler() http.Handler {

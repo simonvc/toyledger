@@ -1,10 +1,9 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"log"
-	"time"
+	"net"
 
 	"github.com/simonvc/miniledger/internal/client"
 	"github.com/simonvc/miniledger/internal/server"
@@ -22,34 +21,24 @@ var tuiCmd = &cobra.Command{
 		serverAddr := flagServer
 
 		if !cmd.Flags().Changed("server") {
-			// Start embedded server in background
 			st, err := store.Open(flagDB)
 			if err != nil {
 				return fmt.Errorf("open database: %w", err)
 			}
 			defer st.Close()
 
-			srv := server.New(st, "127.0.0.1:8888")
+			ln, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				return fmt.Errorf("listen: %w", err)
+			}
+
+			srv := server.New(st, ln.Addr().String())
 			go func() {
-				if err := srv.ListenAndServe(); err != nil {
+				if err := srv.Serve(ln); err != nil {
 					log.Printf("embedded server error: %v", err)
 				}
 			}()
-			serverAddr = "http://127.0.0.1:8888"
-
-			// Wait for server to be ready
-			c := client.New(serverAddr)
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			for {
-				if err := c.Ping(ctx); err == nil {
-					break
-				}
-				if ctx.Err() != nil {
-					return fmt.Errorf("timeout waiting for embedded server")
-				}
-				time.Sleep(50 * time.Millisecond)
-			}
+			serverAddr = "http://" + ln.Addr().String()
 		}
 
 		c := client.New(serverAddr)

@@ -19,10 +19,49 @@
             width: 100%;
             height: 100%;
         }
+        #help-hint {
+            position: fixed;
+            bottom: 6px;
+            right: 10px;
+            color: #555;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            pointer-events: none;
+            z-index: 10;
+        }
+        kbd {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            border-radius: 3px;
+            padding: 1px 4px;
+            font-family: inherit;
+            font-size: inherit;
+            color: #777;
+        }
+        #toast {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(30, 30, 30, 0.92);
+            border: 1px solid #555;
+            border-radius: 6px;
+            padding: 12px 24px;
+            color: #d4d4d4;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            z-index: 100;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        #toast.show { opacity: 1; }
     </style>
 </head>
 <body>
     <div id="terminal-container"></div>
+    <div id="toast"></div>
+    <div id="help-hint"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> share ledger &nbsp; <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd> reset ledger</div>
 
     <script type="module">
         import { init, Terminal, FitAddon } from 'https://esm.sh/ghostty-web@latest';
@@ -52,28 +91,73 @@
 
         window.addEventListener('resize', () => fitAddon.fit());
 
-        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${location.host}/ws?cols=${term.cols}&rows=${term.rows}`;
-        const ws = new WebSocket(wsUrl);
+        function showToast(msg) {
+            const el = document.getElementById('toast');
+            el.textContent = msg;
+            el.classList.add('show');
+            setTimeout(() => el.classList.remove('show'), 2000);
+        }
 
-        ws.binaryType = 'arraybuffer';
-        ws.onopen = () => term.focus();
+        function getSessionID() {
+            const m = document.cookie.match(/(?:^|;\s*)miniledger_session=([0-9a-f-]+)/);
+            return m ? m[1] : null;
+        }
 
-        ws.onmessage = (e) => term.write(new Uint8Array(e.data));
-
-        ws.onclose = () => {
-            term.write('\r\n\x1b[90m[session ended]\x1b[0m\r\n');
-        };
-
-        term.onData((data) => {
-            if (ws.readyState === WebSocket.OPEN) ws.send(data);
-        });
-
-        term.onResize(({ cols, rows }) => {
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+        // Ctrl+Shift+S: copy share URL to clipboard
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.shiftKey && e.key === 'S') {
+                e.preventDefault();
+                e.stopPropagation();
+                const sid = getSessionID();
+                if (!sid) { showToast('[No active session]'); return; }
+                const url = `${location.origin}/join/${sid}`;
+                navigator.clipboard.writeText(url).then(
+                    () => showToast('[This ledger URL copied to clipboard]'),
+                    () => showToast('[Clipboard copy failed]'),
+                );
             }
-        });
+        }, true);
+
+        // Ctrl+Shift+X: reset ledger and start fresh
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.shiftKey && e.key === 'X') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (confirm('Reset ledger? This deletes all data and starts fresh.')) {
+                    fetch('/reset', { method: 'POST' })
+                        .then(() => location.reload())
+                        .catch((err) => alert('Reset failed: ' + err));
+                }
+            }
+        }, true);
+
+        function connect() {
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${location.host}/ws?cols=${term.cols}&rows=${term.rows}`;
+            const ws = new WebSocket(wsUrl);
+
+            ws.binaryType = 'arraybuffer';
+            ws.onopen = () => term.focus();
+
+            ws.onmessage = (e) => term.write(new Uint8Array(e.data));
+
+            ws.onclose = () => {
+                // Auto-reconnect: reload to get a fresh session if needed.
+                setTimeout(() => location.reload(), 500);
+            };
+
+            term.onData((data) => {
+                if (ws.readyState === WebSocket.OPEN) ws.send(data);
+            });
+
+            term.onResize(({ cols, rows }) => {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+                }
+            });
+        }
+
+        connect();
     </script>
 </body>
 </html>

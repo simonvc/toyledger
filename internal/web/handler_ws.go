@@ -22,6 +22,12 @@ type resizeMsg struct {
 }
 
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	dbPath, err := s.readSessionDBPath(r)
+	if err != nil {
+		http.Error(w, "no valid session", http.StatusBadRequest)
+		return
+	}
+
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		InsecureSkipVerify: true,
 	})
@@ -41,7 +47,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cmd := exec.Command(exe, "tui", "--server", s.apiAddr, "--db", s.dbPath)
+	cmd := exec.Command(exe, "tui", "--db", dbPath)
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor")
 
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: rows, Cols: cols})
