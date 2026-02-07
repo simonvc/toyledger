@@ -12,7 +12,8 @@ import (
 type mode int
 
 const (
-	modeAccountList mode = iota
+	modeAbout mode = iota
+	modeAccountList
 	modeAccountDetail
 	modeTransactionList
 	modeTransactionDetail
@@ -26,10 +27,12 @@ const (
 	modeConfig
 )
 
-var tabModes = []mode{modeAccountList, modeTransactionList, modeBalanceSheet, modeRatios, modeOTCFX, modePositions, modeConfig, modeLearn}
+var tabModes = []mode{modeAbout, modeAccountList, modeTransactionList, modeBalanceSheet, modeRatios, modeOTCFX, modePositions, modeConfig, modeLearn}
 
 func tabLabel(m mode) string {
 	switch m {
+	case modeAbout:
+		return "About"
 	case modeAccountList:
 		return "Accounts"
 	case modeTransactionList:
@@ -59,6 +62,7 @@ type App struct {
 	err           error
 	statusMsg     string
 
+	about         aboutModel
 	accountList   accountListModel
 	accountDetail accountDetailModel
 	txnList       txnListModel
@@ -76,7 +80,7 @@ type App struct {
 func NewApp(c *client.Client) *App {
 	app := &App{
 		client:   c,
-		mode:     modeAccountList,
+		mode:     modeAbout,
 		tabIndex: 0,
 		otcFX:    newOTCFX(),
 	}
@@ -100,6 +104,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
+		a.about.width = msg.Width
+		a.about.height = msg.Height - 6
 		a.accountList.width = msg.Width
 		a.accountList.height = msg.Height - 6
 		a.txnList.width = msg.Width
@@ -274,6 +280,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, cmd
 	}
 
+	// About sub-pages: delegate all keys so Esc/numbers work
+	if a.mode == modeAbout && a.about.page != aboutMenu {
+		var cmd tea.Cmd
+		a.about, cmd = a.about.update(msg)
+		return a, cmd
+	}
+
 	// When account list has inline input (rename/delete confirm), delegate all keys directly
 	if a.mode == modeAccountList && (a.accountList.renaming || a.accountList.confirmDelete) {
 		var cmd tea.Cmd
@@ -343,6 +356,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Delegate update to active sub-model
 	var cmd tea.Cmd
 	switch a.mode {
+	case modeAbout:
+		a.about, cmd = a.about.update(msg)
 	case modeAccountList:
 		a.accountList, cmd = a.accountList.update(msg)
 	case modeAccountDetail:
@@ -405,6 +420,8 @@ func (a *App) View() string {
 	// Content
 	var content string
 	switch a.mode {
+	case modeAbout:
+		content = a.about.view()
 	case modeAccountList:
 		content = a.accountList.view()
 	case modeAccountDetail:
