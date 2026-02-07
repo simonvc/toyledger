@@ -95,10 +95,10 @@ var Templates = []Template{
 	},
 	{
 		Name:        "Charge Customer Fee",
-		Description: "Deduct a fee from customer balance. Customer liability decreases (debit), Fee recorded (credit).",
+		Description: "Deduct a fee from customer balance. Customer liability decreases (debit), Fee revenue increases (credit).",
 		Entries: []TemplateEntry{
 			{CoACode: 2020, Role: "Customer account", IsDebit: true},
-			{CoACode: 5090, Role: "Fee account", IsDebit: false},
+			{CoACode: 4090, Role: "Fee income account", IsDebit: false},
 		},
 	},
 	{

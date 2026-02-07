@@ -50,7 +50,7 @@ var SystemAccounts = []ChartEntry{
 	{Code: 2099, ID: "~escrow", Name: "Escrow", Category: CategoryLiabilities, IsSystem: true, Description: "Funds held on behalf of third parties pending a condition"},
 	{Code: 3099, ID: "~capital", Name: "Capital", Category: CategoryEquity, IsSystem: true, Description: "Owner's capital contributions and withdrawals"},
 	{Code: 4099, ID: "~interest", Name: "Interest Income", Category: CategoryRevenue, IsSystem: true, Description: "Interest earned on customer balances or loans"},
-	{Code: 5090, ID: "~fees", Name: "Fees", Category: CategoryExpenses, IsSystem: true, Description: "Internal fee collection account"},
+	{Code: 4090, ID: "~fees", Name: "Fee Income", Category: CategoryRevenue, IsSystem: true, Description: "Fee income from customer charges"},
 	{Code: 5091, ID: "~writeoff", Name: "Write-offs", Category: CategoryExpenses, IsSystem: true, Description: "Bad debt write-offs, failed payments, irrecoverable amounts"},
 }
 

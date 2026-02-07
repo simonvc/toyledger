@@ -453,6 +453,28 @@ func (m *journalEntryModel) view() string {
 			b.WriteString("    Debit (DR)\n")
 			b.WriteString(selectedStyle.Render("  > Credit (CR)") + "\n")
 		}
+		// IFRS callout for the selected account
+		acctID := m.accountInput.Value()
+		for _, a := range m.accounts {
+			if a.ID == acctID {
+				normal := ledger.NormalBalance(a.Category)
+				if entry := ledger.LookupChartEntry(a.Code); entry != nil {
+					hint := "debit to increase, credit to decrease"
+					if normal == "Credit" {
+						hint = "credit to increase, debit to decrease"
+					}
+					info := fmt.Sprintf(
+						"%s  IFRS %d — %s\n%s  %s\n%s  Normal: %s — %s",
+						headerStyle.Render(""), entry.Code, entry.Name,
+						dimStyle.Render(""), entry.Description,
+						dimStyle.Render(""), normal, hint,
+					)
+					b.WriteString("\n")
+					b.WriteString(boxStyle.Render(info))
+				}
+				break
+			}
+		}
 
 	case jeStepEntryAmount:
 		typ := "Debit"
