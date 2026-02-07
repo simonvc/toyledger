@@ -14,6 +14,7 @@ import (
 
 type accountsLoadedMsg struct {
 	accounts []ledger.Account
+	balances map[string]*client.BalanceResponse
 	err      error
 }
 
@@ -42,6 +43,7 @@ type accountRenamedMsg struct {
 
 type accountListModel struct {
 	accounts       []ledger.Account
+	balances       map[string]*client.BalanceResponse
 	cursor         int
 	loading        bool
 	err            error
@@ -58,7 +60,17 @@ func (m *accountListModel) init(c *client.Client) tea.Cmd {
 	m.loading = true
 	return func() tea.Msg {
 		accounts, err := c.ListAccounts(context.Background(), "", nil)
-		return accountsLoadedMsg{accounts: accounts, err: err}
+		if err != nil {
+			return accountsLoadedMsg{err: err}
+		}
+		balances := make(map[string]*client.BalanceResponse, len(accounts))
+		for _, a := range accounts {
+			bal, err := c.GetAccountBalance(context.Background(), a.ID)
+			if err == nil {
+				balances[a.ID] = bal
+			}
+		}
+		return accountsLoadedMsg{accounts: accounts, balances: balances}
 	}
 }
 
@@ -67,6 +79,7 @@ func (m accountListModel) update(msg tea.Msg) (accountListModel, tea.Cmd) {
 	case accountsLoadedMsg:
 		m.loading = false
 		m.accounts = msg.accounts
+		m.balances = msg.balances
 		m.err = msg.err
 
 	case accountDeletedMsg:
@@ -179,7 +192,7 @@ func (m *accountListModel) view() string {
 	b.WriteString("\n")
 
 	// Header
-	header := fmt.Sprintf("  %-12s %-30s %6s %-15s %-7s %s", "ID", "NAME", "CODE", "CATEGORY", "NORMAL", "CCY")
+	header := fmt.Sprintf("  %-12s %-28s %6s %-15s %18s %s", "ID", "NAME", "CODE", "CATEGORY", "BALANCE", "CCY")
 	b.WriteString(headerStyle.Render(header))
 	b.WriteString("\n")
 
@@ -197,12 +210,15 @@ func (m *accountListModel) view() string {
 	for i := start; i < len(m.accounts) && i < start+maxRows; i++ {
 		a := m.accounts[i]
 		name := a.Name
-		if len(name) > 28 {
-			name = name[:28] + ".."
+		if len(name) > 26 {
+			name = name[:26] + ".."
 		}
 
-		normal := ledger.NormalBalance(a.Category)
-		line := fmt.Sprintf("  %-12s %-30s %6d %-15s %-7s %s", a.ID, name, a.Code, a.Category, normal, a.Currency)
+		balStr := ""
+		if bal, ok := m.balances[a.ID]; ok {
+			balStr = ledger.FormatAmount(bal.Balance, bal.Currency)
+		}
+		line := fmt.Sprintf("  %-12s %-28s %6d %-15s %18s %s", a.ID, name, a.Code, a.Category, balStr, a.Currency)
 		if i == m.cursor {
 			b.WriteString(selectedStyle.Render("> " + line[2:]))
 		} else {

@@ -98,7 +98,8 @@ func ToMinorUnits(amount string, currency string) (int64, error) {
 	return result, nil
 }
 
-// FormatAmount converts minor units to a display string. E.g. 1050 USD -> "10.50".
+// FormatAmount converts minor units to a display string with comma grouping.
+// E.g. 100000050 USD -> "1,000,000.50".
 func FormatAmount(amount int64, currency string) string {
 	cur, ok := Currencies[currency]
 	if !ok {
@@ -106,7 +107,7 @@ func FormatAmount(amount int64, currency string) string {
 	}
 
 	if cur.Exponent == 0 {
-		return fmt.Sprintf("%d", amount)
+		return commaInt(amount)
 	}
 
 	negative := amount < 0
@@ -123,8 +124,31 @@ func FormatAmount(amount int64, currency string) string {
 		sign = "-"
 	}
 
-	format := fmt.Sprintf("%%s%%d.%%0%dd", cur.Exponent)
-	return fmt.Sprintf(format, sign, whole, frac)
+	fracFmt := fmt.Sprintf("%%0%dd", cur.Exponent)
+	return sign + commaInt(int64(whole)) + "." + fmt.Sprintf(fracFmt, frac)
+}
+
+// commaInt formats an integer with comma thousands separators (US convention).
+func commaInt(n int64) string {
+	if n < 0 {
+		return "-" + commaInt(-n)
+	}
+	s := strconv.FormatInt(n, 10)
+	if len(s) <= 3 {
+		return s
+	}
+	var b strings.Builder
+	rem := len(s) % 3
+	if rem > 0 {
+		b.WriteString(s[:rem])
+	}
+	for i := rem; i < len(s); i += 3 {
+		if b.Len() > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(s[i : i+3])
+	}
+	return b.String()
 }
 
 // CurrencyCodes returns a sorted list of supported currency codes.
