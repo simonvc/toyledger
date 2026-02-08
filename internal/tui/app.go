@@ -195,6 +195,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case otcFXTxnCreatedMsg:
 		var cmd tea.Cmd
 		a.otcFX, cmd = a.otcFX.update(msg, a.client)
+		if a.otcFX.done {
+			a.mode = modeTransactionList
+			a.statusMsg = a.otcFX.statusMsg
+			a.otcFX = newOTCFX()
+			return a, tea.Batch(a.txnList.init(a.client), a.otcFX.init(a.client))
+		}
 		return a, cmd
 	case positionsLoadedMsg:
 		var cmd tea.Cmd
