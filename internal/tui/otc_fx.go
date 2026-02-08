@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -24,10 +25,22 @@ const (
 	fxStepConfirm
 )
 
-// otcFXLoadedMsg is sent when accounts are loaded for the OTC FX tab.
-type otcFXLoadedMsg struct {
-	accounts []ledger.Account
-	err      error
+type currencyPosition struct {
+	Currency    string
+	Assets      int64 // positive, minor units in native currency
+	Liabilities int64 // positive (absolute), minor units
+	Equity      int64 // positive (absolute), minor units
+	Net         int64 // raw sum of all balances in this currency
+	GELEquiv    int64 // ToGEL(Net, Currency)
+}
+
+// otcFXDashLoadedMsg is sent when all dashboard data is loaded.
+type otcFXDashLoadedMsg struct {
+	fxEntries []ledger.Entry
+	fxTxns    []ledger.Transaction
+	accounts  []ledger.Account
+	balances  map[string]*client.BalanceResponse
+	err       error
 }
 
 // otcFXTxnCreatedMsg is sent when the FX transaction is created.
@@ -62,6 +75,13 @@ type otcFXModel struct {
 	exactRate float64
 	rateInput textinput.Model
 	rateExact bool
+
+	// Dashboard data
+	fxEntries   []ledger.Entry
+	fxTxns      []ledger.Transaction
+	positions   []currencyPosition
+	totalGEL    int64
+	dashLoading bool
 
 	// Shared
 	accounts  []ledger.Account
@@ -98,9 +118,101 @@ func newOTCFX() otcFXModel {
 }
 
 func (m *otcFXModel) init(c *client.Client) tea.Cmd {
+	m.dashLoading = true
 	return func() tea.Msg {
-		accounts, err := c.ListAccounts(context.Background(), "", nil)
-		return otcFXLoadedMsg{accounts: accounts, err: err}
+		ctx := context.Background()
+
+		accounts, err := c.ListAccounts(ctx, "", nil)
+		if err != nil {
+			return otcFXDashLoadedMsg{err: err}
+		}
+
+		fxEntries, err := c.ListAccountEntries(ctx, "~fx")
+		if err != nil {
+			return otcFXDashLoadedMsg{accounts: accounts, err: err}
+		}
+
+		fxTxns, _ := c.ListTransactions(ctx, "~fx")
+
+		balances := make(map[string]*client.BalanceResponse, len(accounts))
+		for _, a := range accounts {
+			if a.Currency == "*" {
+				continue
+			}
+			bal, err := c.GetAccountBalance(ctx, a.ID)
+			if err == nil {
+				balances[a.ID] = bal
+			}
+		}
+
+		return otcFXDashLoadedMsg{
+			fxEntries: fxEntries,
+			fxTxns:    fxTxns,
+			accounts:  accounts,
+			balances:  balances,
+		}
+	}
+}
+
+func (m *otcFXModel) computePositions(accounts []ledger.Account, balances map[string]*client.BalanceResponse) {
+	type bucket struct {
+		assets      int64
+		liabilities int64
+		equity      int64
+		net         int64
+	}
+	byCurrency := make(map[string]*bucket)
+
+	ensureBucket := func(ccy string) *bucket {
+		if b, ok := byCurrency[ccy]; ok {
+			return b
+		}
+		b := &bucket{}
+		byCurrency[ccy] = b
+		return b
+	}
+
+	for _, a := range accounts {
+		if a.Currency == "*" {
+			continue
+		}
+		bal, ok := balances[a.ID]
+		if !ok {
+			continue
+		}
+		b := ensureBucket(a.Currency)
+		b.net += bal.Balance
+
+		switch a.Category {
+		case ledger.CategoryAssets:
+			b.assets += bal.Balance
+		case ledger.CategoryLiabilities:
+			b.liabilities += -bal.Balance
+		case ledger.CategoryEquity:
+			b.equity += -bal.Balance
+		}
+	}
+
+	currencies := make([]string, 0, len(byCurrency))
+	for ccy := range byCurrency {
+		currencies = append(currencies, ccy)
+	}
+	sort.Strings(currencies)
+
+	m.positions = make([]currencyPosition, 0, len(currencies))
+	m.totalGEL = 0
+	for _, ccy := range currencies {
+		b := byCurrency[ccy]
+		gelEquiv := ledger.ToGEL(b.net, ccy)
+		m.totalGEL += gelEquiv
+		m.positions = append(m.positions, currencyPosition{
+			Currency:    ccy,
+			Assets:      b.assets,
+			Liabilities: b.liabilities,
+			Equity:      b.equity,
+			Net:         b.net,
+			GELEquiv:    gelEquiv,
+		})
 	}
 }
 
@@ -169,10 +281,20 @@ func (m *otcFXModel) bankPnLGEL() int64 {
 
 func (m otcFXModel) update(msg tea.Msg, c *client.Client) (otcFXModel, tea.Cmd) {
 	switch msg := msg.(type) {
-	case otcFXLoadedMsg:
-		if msg.err == nil {
-			m.accounts = msg.accounts
+	case otcFXDashLoadedMsg:
+		m.dashLoading = false
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
 		}
+		m.accounts = msg.accounts
+		m.fxEntries = msg.fxEntries
+		if len(msg.fxTxns) > 5 {
+			m.fxTxns = msg.fxTxns[:5]
+		} else {
+			m.fxTxns = msg.fxTxns
+		}
+		m.computePositions(msg.accounts, msg.balances)
 		return m, nil
 
 	case otcFXTxnCreatedMsg:
@@ -500,9 +622,172 @@ func (m *otcFXModel) view() string {
 }
 
 func (m *otcFXModel) viewLanding(b *strings.Builder) {
-	b.WriteString("  Press " + selectedStyle.Render("f") + " to start a new FX deal\n\n")
-	b.WriteString(dimStyle.Render("  The OTC FX desk lets you build and execute") + "\n")
-	b.WriteString(dimStyle.Render("  cross-currency trades against the ledger.") + "\n")
+	if m.dashLoading {
+		b.WriteString("  Loading FX dashboard...\n")
+		return
+	}
+
+	m.viewFXPnL(b)
+	m.viewRecentFXTxns(b)
+	m.viewPositions(b)
+
+	b.WriteString("\n  Press " + selectedStyle.Render("f") + " to start a new FX deal\n")
+}
+
+func (m *otcFXModel) viewFXPnL(b *strings.Builder) {
+	if len(m.fxEntries) == 0 {
+		b.WriteString(dimStyle.Render("  No FX activity yet.") + "\n\n")
+		return
+	}
+
+	byCurrency := make(map[string]int64)
+	for _, e := range m.fxEntries {
+		byCurrency[e.Currency] += e.Amount
+	}
+
+	currencies := make([]string, 0, len(byCurrency))
+	for ccy := range byCurrency {
+		currencies = append(currencies, ccy)
+	}
+	sort.Strings(currencies)
+
+	b.WriteString(headerStyle.Render("  FX Book PnL"))
+	b.WriteString("\n")
+	b.WriteString(dimStyle.Render(fmt.Sprintf("  %-6s %18s %18s", "CCY", "NET POSITION", "GEL EQUIV")))
+	b.WriteString("\n")
+
+	var totalGEL int64
+	for _, ccy := range currencies {
+		bal := byCurrency[ccy]
+		gelEquiv := ledger.ToGEL(bal, ccy)
+		totalGEL += gelEquiv
+		b.WriteString(fmt.Sprintf("  %-6s %14s %-3s %14s GEL\n",
+			ccy,
+			ledger.FormatAmount(bal, ccy), ccy,
+			ledger.FormatAmount(gelEquiv, ledger.ReportingCurrency)))
+	}
+	b.WriteString(fmt.Sprintf("  %s\n", strings.Repeat("─", 44)))
+
+	label := "Net FX PnL"
+	gelStr := ledger.FormatAmount(totalGEL, ledger.ReportingCurrency) + " GEL"
+	if totalGEL > 0 {
+		b.WriteString(successStyle.Render(fmt.Sprintf("  %-24s %14s", label, gelStr)))
+	} else if totalGEL < 0 {
+		b.WriteString(errorStyle.Render(fmt.Sprintf("  %-24s %14s", label, gelStr)))
+	} else {
+		b.WriteString(fmt.Sprintf("  %-24s %14s", label, gelStr))
+	}
+	b.WriteString("\n")
+}
+
+func (m *otcFXModel) viewRecentFXTxns(b *strings.Builder) {
+	b.WriteString("\n")
+	b.WriteString(headerStyle.Render("  Recent FX Deals"))
+	b.WriteString("\n")
+
+	if len(m.fxTxns) == 0 {
+		b.WriteString(dimStyle.Render("  No FX transactions yet.") + "\n")
+		return
+	}
+
+	for _, txn := range m.fxTxns {
+		desc := txn.Description
+		if len(desc) > 60 {
+			desc = desc[:58] + ".."
+		}
+		date := txn.PostedAt.Format("Jan 02 15:04")
+		b.WriteString(fmt.Sprintf("  %s  %s\n", dimStyle.Render(date), desc))
+	}
+}
+
+func (m *otcFXModel) viewPositions(b *strings.Builder) {
+	b.WriteString("\n")
+	b.WriteString(headerStyle.Render("  Open Currency Positions"))
+	b.WriteString("\n")
+
+	if len(m.positions) == 0 {
+		b.WriteString(dimStyle.Render("  No currency positions found.") + "\n")
+		return
+	}
+
+	ccyW := 5
+	assetsW := len("ASSETS (Long)")
+	liabW := len("LIABS (Short)")
+	eqW := len("EQUITY")
+	netW := len("NET")
+	gelW := len("GEL EQUIV")
+
+	for _, p := range m.positions {
+		if l := len(ledger.FormatAmount(p.Assets, p.Currency)); l > assetsW {
+			assetsW = l
+		}
+		if l := len(ledger.FormatAmount(p.Liabilities, p.Currency)); l > liabW {
+			liabW = l
+		}
+		if l := len(ledger.FormatAmount(p.Equity, p.Currency)); l > eqW {
+			eqW = l
+		}
+		if l := len(ledger.FormatAmount(p.Net, p.Currency)); l > netW {
+			netW = l
+		}
+		if l := len(ledger.FormatAmount(p.GELEquiv, ledger.ReportingCurrency)); l > gelW {
+			gelW = l
+		}
+	}
+	assetsW += 2
+	liabW += 2
+	eqW += 2
+	netW += 2
+	gelW += 2
+
+	header := fmt.Sprintf("  %-*s%*s%*s%*s%*s%*s",
+		ccyW, "CCY",
+		assetsW, "ASSETS (Long)",
+		liabW, "LIABS (Short)",
+		eqW, "EQUITY",
+		netW, "NET",
+		gelW, "GEL EQUIV")
+	b.WriteString(dimStyle.Render(header))
+	b.WriteString("\n")
+
+	for _, p := range m.positions {
+		assets := ledger.FormatAmount(p.Assets, p.Currency)
+		liab := ledger.FormatAmount(p.Liabilities, p.Currency)
+		eq := ledger.FormatAmount(p.Equity, p.Currency)
+		net := ledger.FormatAmount(p.Net, p.Currency)
+		gel := ledger.FormatAmount(p.GELEquiv, ledger.ReportingCurrency)
+
+		line := fmt.Sprintf("  %-*s%*s%*s%*s%*s%*s",
+			ccyW, p.Currency,
+			assetsW, assets,
+			liabW, liab,
+			eqW, eq,
+			netW, net,
+			gelW, gel)
+
+		if p.Net > 0 {
+			b.WriteString(debitStyle.Render(line))
+		} else if p.Net < 0 {
+			b.WriteString(creditStyle.Render(line))
+		} else {
+			b.WriteString(line)
+		}
+		b.WriteString("\n")
+	}
+
+	totalW := ccyW + assetsW + liabW + eqW + netW
+	totalLabel := "Total Open Position"
+	totalGEL := ledger.FormatAmount(m.totalGEL, ledger.ReportingCurrency) + " GEL"
+
+	b.WriteString(fmt.Sprintf("  %s\n", strings.Repeat("─", totalW+gelW)))
+	if m.totalGEL > 0 {
+		b.WriteString(debitStyle.Render(fmt.Sprintf("  %-*s%*s", totalW-2, totalLabel, gelW, totalGEL)))
+	} else if m.totalGEL < 0 {
+		b.WriteString(creditStyle.Render(fmt.Sprintf("  %-*s%*s", totalW-2, totalLabel, gelW, totalGEL)))
+	} else {
+		b.WriteString(fmt.Sprintf("  %-*s%*s", totalW-2, totalLabel, gelW, totalGEL))
+	}
+	b.WriteString("\n")
 }
 
 func (m *otcFXModel) viewSrcAcct(b *strings.Builder) {
