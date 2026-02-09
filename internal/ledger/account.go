@@ -90,17 +90,18 @@ func CategoryLabel(cat Category) string {
 }
 
 var (
-	nostroPattern = regexp.MustCompile(`^<[a-zA-Z0-9_-]+:[a-zA-Z]{3}>$`)
-	vostroPattern = regexp.MustCompile(`^>[a-zA-Z0-9_-]+:[a-zA-Z]{3}<$`)
+	nostroPattern     = regexp.MustCompile(`^<[a-zA-Z0-9_-]+:[a-zA-Z]{3}>$`)
+	vostroPattern     = regexp.MustCompile(`^>[a-zA-Z0-9_-]+:[a-zA-Z]{3}<$`)
+	customerIDPattern = regexp.MustCompile(`^acc_\d+$`)
 )
 
 // ValidateCorrespondentID checks that accounts at codes 1010 (nostro) and
 // 2010 (vostro) follow the directional arrow naming convention.
 func ValidateCorrespondentID(code int, id string) error {
 	switch code {
-	case 1010:
+	case 1010, 1060:
 		if !nostroPattern.MatchString(id) {
-			return fmt.Errorf("%w: nostro accounts (1010) must use <bank:ccy> format, e.g. <jpmorgan:usd>", ErrInvalidCorrespondentID)
+			return fmt.Errorf("%w: accounts at code %d must use <bank:ccy> format, e.g. <nbg:gel>", ErrInvalidCorrespondentID, code)
 		}
 	case 2010:
 		if !vostroPattern.MatchString(id) {
@@ -147,6 +148,10 @@ func (a *Account) Validate() error {
 
 	if err := ValidateCorrespondentID(a.Code, a.ID); err != nil {
 		return err
+	}
+
+	if a.Code == 2020 && !customerIDPattern.MatchString(a.ID) {
+		return fmt.Errorf("%w: customer accounts (2020) must use acc_N format, e.g. acc_1", ErrInvalidAccountID)
 	}
 
 	if a.Currency != "*" && !ValidCurrency(a.Currency) {

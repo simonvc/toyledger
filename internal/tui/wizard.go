@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -24,9 +25,16 @@ const (
 	stepConfirm
 )
 
+var bankNameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
 type accountCreatedMsg struct {
 	account *ledger.Account
 	err     error
+}
+
+type nextCustomerIDMsg struct {
+	nextID string
+	err    error
 }
 
 type wizardModel struct {
@@ -39,6 +47,7 @@ type wizardModel struct {
 	currency   int // index into currency list
 	curOptions []string
 
+	autoID    string // auto-generated ID for code 2020 accounts
 	err       error
 	done      bool
 	cancelled bool
@@ -68,6 +77,69 @@ func newWizard() wizardModel {
 	}
 }
 
+// codeVal returns the parsed IFRS code (0 if unparsed).
+func (m wizardModel) codeVal() int {
+	code, _ := strconv.Atoi(m.code.Value())
+	return code
+}
+
+// finalID constructs the complete account ID based on code-specific rules.
+func (m wizardModel) finalID() string {
+	ccy := strings.ToLower(m.curOptions[m.currency])
+	switch m.codeVal() {
+	case 1010, 1060:
+		return "<" + strings.ToLower(m.id.Value()) + ":" + ccy + ">"
+	case 2010:
+		return ">" + strings.ToLower(m.id.Value()) + ":" + ccy + "<"
+	case 2020:
+		return m.autoID
+	default:
+		return m.id.Value()
+	}
+}
+
+// stepProgress returns the "Step N of M" string, accounting for reordered flows.
+func (m wizardModel) stepProgress() string {
+	code := m.codeVal()
+	var stepNum, total int
+	switch {
+	case code == 2020:
+		total = 5
+		switch m.step {
+		case stepCategory:
+			stepNum = 1
+		case stepCode:
+			stepNum = 2
+		case stepCurrency:
+			stepNum = 3
+		case stepName:
+			stepNum = 4
+		case stepConfirm:
+			stepNum = 5
+		}
+	case code == 1010 || code == 1060 || code == 2010:
+		total = 6
+		switch m.step {
+		case stepCategory:
+			stepNum = 1
+		case stepCode:
+			stepNum = 2
+		case stepCurrency:
+			stepNum = 3
+		case stepID:
+			stepNum = 4
+		case stepName:
+			stepNum = 5
+		case stepConfirm:
+			stepNum = 6
+		}
+	default:
+		total = 6
+		stepNum = int(m.step) + 1
+	}
+	return fmt.Sprintf("Step %d of %d", stepNum, total)
+}
+
 func (m wizardModel) update(msg tea.Msg, c *client.Client) (wizardModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case accountCreatedMsg:
@@ -78,6 +150,14 @@ func (m wizardModel) update(msg tea.Msg, c *client.Client) (wizardModel, tea.Cmd
 		}
 		m.done = true
 		m.statusMsg = fmt.Sprintf("Account %s created successfully!", msg.account.ID)
+		return m, nil
+
+	case nextCustomerIDMsg:
+		if msg.err != nil {
+			m.autoID = "acc_1"
+		} else {
+			m.autoID = msg.nextID
+		}
 		return m, nil
 
 	case tea.KeyMsg:
@@ -140,19 +220,37 @@ func (m wizardModel) updateCode(msg tea.KeyMsg, c *client.Client) (wizardModel, 
 			return m, nil
 		}
 		m.err = nil
-		m.step = stepID
+
 		switch code {
-		case 1010:
-			m.id.SetValue("")
-			m.id.Placeholder = "<bank:ccy> e.g. <jpmorgan:usd>"
-		case 2010:
-			m.id.SetValue("")
-			m.id.Placeholder = ">bank:ccy< e.g. >jpmorgan:usd<"
+		case 1010, 1060, 2010:
+			// Correspondent/reserve accounts: pick currency first, then bank name
+			m.step = stepCurrency
+			return m, nil
+		case 2020:
+			// Customer accounts: pick currency first, ID auto-generated
+			m.step = stepCurrency
+			return m, func() tea.Msg {
+				accounts, err := c.ListAccounts(context.Background(), "", nil)
+				if err != nil {
+					return nextCustomerIDMsg{err: err}
+				}
+				maxN := 0
+				for _, acct := range accounts {
+					if acct.Code == 2020 {
+						var n int
+						if _, e := fmt.Sscanf(acct.ID, "acc_%d", &n); e == nil && n > maxN {
+							maxN = n
+						}
+					}
+				}
+				return nextCustomerIDMsg{nextID: fmt.Sprintf("acc_%d", maxN+1)}
+			}
 		default:
+			m.step = stepID
 			m.id.SetValue(strconv.Itoa(code))
+			m.id.Focus()
+			return m, nil
 		}
-		m.id.Focus()
-		return m, nil
 	}
 
 	var cmd tea.Cmd
@@ -162,10 +260,20 @@ func (m wizardModel) updateCode(msg tea.KeyMsg, c *client.Client) (wizardModel, 
 
 func (m wizardModel) updateID(msg tea.KeyMsg, c *client.Client) (wizardModel, tea.Cmd) {
 	if key.Matches(msg, keys.Enter) {
-		if m.id.Value() == "" {
+		val := m.id.Value()
+		if val == "" {
 			m.err = fmt.Errorf("ID is required")
 			return m, nil
 		}
+
+		code := m.codeVal()
+		if code == 1010 || code == 1060 || code == 2010 {
+			if !bankNameRe.MatchString(val) {
+				m.err = fmt.Errorf("bank name must be alphanumeric, hyphens, or underscores")
+				return m, nil
+			}
+		}
+
 		m.err = nil
 		m.step = stepName
 		m.name.Focus()
@@ -184,7 +292,15 @@ func (m wizardModel) updateName(msg tea.KeyMsg, c *client.Client) (wizardModel, 
 			return m, nil
 		}
 		m.err = nil
-		m.step = stepCurrency
+
+		code := m.codeVal()
+		switch code {
+		case 1010, 1060, 2010, 2020:
+			// Currency was already selected; go straight to confirm
+			m.step = stepConfirm
+		default:
+			m.step = stepCurrency
+		}
 		return m, nil
 	}
 
@@ -205,7 +321,24 @@ func (m wizardModel) updateCurrency(msg tea.KeyMsg, c *client.Client) (wizardMod
 		}
 	case key.Matches(msg, keys.Enter):
 		m.err = nil
-		m.step = stepConfirm
+		code := m.codeVal()
+		switch code {
+		case 1010, 1060:
+			m.step = stepID
+			m.id.SetValue("")
+			m.id.Placeholder = "bank name e.g. nbg"
+			m.id.Focus()
+		case 2010:
+			m.step = stepID
+			m.id.SetValue("")
+			m.id.Placeholder = "bank name e.g. jpmorgan"
+			m.id.Focus()
+		case 2020:
+			m.step = stepName
+			m.name.Focus()
+		default:
+			m.step = stepConfirm
+		}
 	}
 	return m, nil
 }
@@ -213,14 +346,15 @@ func (m wizardModel) updateCurrency(msg tea.KeyMsg, c *client.Client) (wizardMod
 func (m wizardModel) updateConfirm(msg tea.KeyMsg, c *client.Client) (wizardModel, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y", "enter":
-		code, _ := strconv.Atoi(m.code.Value())
+		code := m.codeVal()
+		id := m.finalID()
 		acct := &ledger.Account{
-			ID:       m.id.Value(),
+			ID:       id,
 			Name:     m.name.Value(),
 			Code:     code,
 			Category: m.category,
 			Currency: m.curOptions[m.currency],
-			IsSystem: strings.HasPrefix(m.id.Value(), "~"),
+			IsSystem: strings.HasPrefix(id, "~"),
 		}
 		return m, func() tea.Msg {
 			created, err := c.CreateAccount(context.Background(), acct)
@@ -238,9 +372,10 @@ func (m *wizardModel) view() string {
 	b.WriteString(titleStyle.Render("Create Account Wizard"))
 	b.WriteString("\n\n")
 
-	progress := fmt.Sprintf("Step %d of 6", int(m.step)+1)
-	b.WriteString(dimStyle.Render(progress))
+	b.WriteString(dimStyle.Render(m.stepProgress()))
 	b.WriteString("\n\n")
+
+	code := m.codeVal()
 
 	switch m.step {
 	case stepCategory:
@@ -287,37 +422,71 @@ func (m *wizardModel) view() string {
 		}
 
 	case stepID:
-		b.WriteString(fmt.Sprintf("  Code: %s\n", m.code.Value()))
-		b.WriteString("  Enter account ID:\n\n")
-		b.WriteString("  " + m.id.View() + "\n")
-
-		code, _ := strconv.Atoi(m.code.Value())
 		switch code {
-		case 1010:
-			b.WriteString("\n" + hintBoxStyle.Render(
-				"NOSTRO (1010): Use <bank:currency> format\n"+
-					"Example: <jpmorgan:usd>\n\n"+
-					"The < > arrows represent money flowing\n"+
-					"OUT of the bank to the correspondent.",
-			) + "\n")
+		case 1010, 1060:
+			ccy := strings.ToLower(m.curOptions[m.currency])
+			b.WriteString(fmt.Sprintf("  Code: %s | Currency: %s\n", m.code.Value(), m.curOptions[m.currency]))
+			b.WriteString("  Enter bank name:\n\n")
+			b.WriteString("  " + m.id.View() + "\n")
+			preview := "<" + strings.ToLower(m.id.Value()) + ":" + ccy + ">"
+			if m.id.Value() == "" {
+				preview = "<bank:" + ccy + ">"
+			}
+			var hintLabel string
+			if code == 1060 {
+				hintLabel = fmt.Sprintf("RESERVES (1060): ID will be %s\n\n", preview) +
+					"The < > format identifies where reserves\n" +
+					"are held and in which currency."
+			} else {
+				hintLabel = fmt.Sprintf("NOSTRO (1010): ID will be %s\n\n", preview) +
+					"The < > arrows represent money flowing\n" +
+					"OUT of the bank to the correspondent."
+			}
+			b.WriteString("\n" + hintBoxStyle.Render(hintLabel) + "\n")
 		case 2010:
+			ccy := strings.ToLower(m.curOptions[m.currency])
+			b.WriteString(fmt.Sprintf("  Code: %s | Currency: %s\n", m.code.Value(), m.curOptions[m.currency]))
+			b.WriteString("  Enter bank name:\n\n")
+			b.WriteString("  " + m.id.View() + "\n")
+			preview := ">" + strings.ToLower(m.id.Value()) + ":" + ccy + "<"
+			if m.id.Value() == "" {
+				preview = ">bank:" + ccy + "<"
+			}
 			b.WriteString("\n" + hintBoxStyle.Render(
-				"VOSTRO (2010): Use >bank:currency< format\n"+
-					"Example: >jpmorgan:usd<\n\n"+
+				fmt.Sprintf("VOSTRO (2010): ID will be %s\n\n", preview)+
 					"The > < arrows represent money flowing\n"+
 					"IN to the bank from the correspondent.",
 			) + "\n")
 		default:
+			b.WriteString(fmt.Sprintf("  Code: %s\n", m.code.Value()))
+			b.WriteString("  Enter account ID:\n\n")
+			b.WriteString("  " + m.id.View() + "\n")
 			b.WriteString("\n" + dimStyle.Render("  Use ~ prefix for system/internal accounts") + "\n")
 		}
 
 	case stepName:
-		b.WriteString(fmt.Sprintf("  Code: %s | ID: %s\n", m.code.Value(), m.id.Value()))
+		switch {
+		case code == 1010 || code == 1060 || code == 2010:
+			b.WriteString(fmt.Sprintf("  Code: %s | ID: %s\n", m.code.Value(), m.finalID()))
+		case code == 2020:
+			idLabel := m.autoID
+			if idLabel == "" {
+				idLabel = "acc_..."
+			}
+			b.WriteString(fmt.Sprintf("  Code: %s | ID: %s | Currency: %s\n", m.code.Value(), idLabel, m.curOptions[m.currency]))
+		default:
+			b.WriteString(fmt.Sprintf("  Code: %s | ID: %s\n", m.code.Value(), m.id.Value()))
+		}
 		b.WriteString("  Enter account name:\n\n")
 		b.WriteString("  " + m.name.View() + "\n")
 
 	case stepCurrency:
-		b.WriteString(fmt.Sprintf("  Code: %s | ID: %s | Name: %s\n", m.code.Value(), m.id.Value(), m.name.Value()))
+		switch {
+		case code == 1010 || code == 1060 || code == 2010 || code == 2020:
+			b.WriteString(fmt.Sprintf("  Code: %s\n", m.code.Value()))
+		default:
+			b.WriteString(fmt.Sprintf("  Code: %s | ID: %s | Name: %s\n", m.code.Value(), m.id.Value(), m.name.Value()))
+		}
 		b.WriteString("  Select currency:\n\n")
 
 		// Show a window of currencies around the cursor
@@ -342,12 +511,13 @@ func (m *wizardModel) view() string {
 		}
 
 	case stepConfirm:
+		id := m.finalID()
 		b.WriteString("  Review and confirm:\n\n")
 		b.WriteString(boxStyle.Render(fmt.Sprintf(
 			"%s %s\n%s %s\n%s %s\n%s %s\n%s %s",
 			labelStyle.Render("Category:"), ledger.CategoryLabel(m.category),
 			labelStyle.Render("Code:"), m.code.Value(),
-			labelStyle.Render("ID:"), m.id.Value(),
+			labelStyle.Render("ID:"), id,
 			labelStyle.Render("Name:"), m.name.Value(),
 			labelStyle.Render("Currency:"), m.curOptions[m.currency],
 		)))

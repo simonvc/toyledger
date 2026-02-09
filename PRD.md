@@ -169,9 +169,9 @@ Account codes follow IFRS conventions using 4-digit codes. The first digit deter
 | 1030 | Inventory | Assets | Goods held for sale |
 | 1040 | Prepaid Expenses | Assets | Payments made in advance for future expenses |
 | 1050 | Property, Plant & Equipment | Assets | Long-term tangible assets |
-| 1060 | Restricted Cash / Regulatory Reserves | Assets | Cash held at regulators or under restrictions |
+| 1060 | Restricted Cash / Regulatory Reserves | Assets | Cash held at regulators or under restrictions — ID format: `<bank:ccy>` |
 | 2010 | Vostro Accounts | Liabilities | Correspondent bank accounts at us — ID format: `>bank:ccy<` |
-| 2020 | Customer Accounts | Liabilities | Customer deposit and balance accounts |
+| 2020 | Customer Accounts | Liabilities | Customer deposit and balance accounts — ID format: `acc_N` |
 | 2030 | Accrued Expenses | Liabilities | Expenses incurred but not yet paid |
 | 2040 | Loans Payable | Liabilities | Outstanding loan obligations |
 | 3010 | Retained Earnings | Equity | Accumulated profits retained in the entity |
@@ -241,6 +241,7 @@ Vostro accounts represent **another bank's money held at our bank**. The angle b
 - Bank name: lowercase alphanumeric, hyphens, and underscores allowed
 - Currency: 3-letter currency code (lowercase in the ID)
 - The naming convention is **enforced by validation** — accounts at codes 1010 and 2010 must follow this format
+- In the TUI wizard, only the bank name is editable; the currency suffix and brackets are auto-constructed from the selected currency
 
 ### Relationship
 
@@ -250,6 +251,28 @@ A nostro and vostro are two sides of the same correspondent relationship. If Pav
 |---|---|
 | `<jpmorgan:usd>` (nostro, asset) | This is their vostro |
 | `>jpmorgan:usd<` (vostro, liability) | This is their nostro |
+
+---
+
+## Customer Account ID Convention (code 2020)
+
+Customer accounts at IFRS code 2020 use an auto-incrementing ID format: `acc_N`, where N is a positive integer.
+
+- ID format: `acc_1`, `acc_2`, `acc_3`, ...
+- The integer suffix auto-increments based on the highest existing customer account ID
+- This is **enforced by validation** — accounts at code 2020 must match the pattern `acc_\d+`
+- In the TUI wizard, the ID is auto-generated and not manually editable; the wizard pre-fills the next available ID
+
+### Account ID Summary by Code
+
+| Code | Category | ID Format | Editable in Wizard | Example |
+|------|----------|-----------|--------------------|---------|
+| 1010 | Assets (Nostro) | `<bank:ccy>` | Bank name only (currency auto-filled) | `<jpmorgan:usd>` |
+| 1060 | Assets (Reserves) | `<bank:ccy>` | Bank name only (currency auto-filled) | `<nbg:gel>` |
+| 2010 | Liabilities (Vostro) | `>bank:ccy<` | Bank name only (currency auto-filled) | `>jpmorgan:usd<` |
+| 2020 | Liabilities (Customer) | `acc_N` | Auto-generated (not editable) | `acc_1` |
+| ~xxx | System | `~name` | Full ID (must start with ~) | `~fees` |
+| Other | Varies | Free-form | Full ID | `3010` |
 
 ---
 
